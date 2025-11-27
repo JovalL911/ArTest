@@ -96,18 +96,19 @@
           this.hitStatusEl.style.display = show ? 'flex' : 'none';
         },
 
-        setHitDebugState(detected) {
+   setHitDebugState(detected) {
           if (!this.hitDebugStateEl || !this.hitDebug) return;
 
-          this.hitDebug.style.display = this.scene && this.scene.is('ar-mode') ? 'block' : 'none';
+          // Always show the debug bar while AR is active; we'll hide it explicitly on exit
+          this.hitDebug.style.display = 'block';
           this.hitDebugStateEl.style.fontWeight = '700';
 
           if (detected) {
             this.hitDebugStateEl.textContent = 'detected';
-            this.hitDebugStateEl.style.color = '#22c55e';
+            this.hitDebugStateEl.style.color = '#22c55e'; // green
           } else {
             this.hitDebugStateEl.textContent = 'not detected yet';
-            this.hitDebugStateEl.style.color = '#ef4444';
+            this.hitDebugStateEl.style.color = '#ef4444'; // red
           }
         },
 
