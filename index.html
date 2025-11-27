@@ -20,6 +20,7 @@
           this.hintEl = document.getElementById('hint');
           this.reticle = document.getElementById('reticle');
           this.card = document.getElementById('card');
+          this.hitStatusBar = document.getElementById('hitStatusBar');
           this.hitStatusEl = document.getElementById('hitStatus');
           this.scene = this.el.sceneEl;
           this.scanInterval = null;
@@ -63,8 +64,9 @@
         },
 
         updateHitStatus(text, show = true) {
-          if (!this.hitStatusEl) return;
+          if (!this.hitStatusEl || !this.hitStatusBar) return;
           this.hitStatusEl.textContent = text;
+          this.hitStatusBar.style.display = show ? 'flex' : 'none';
           this.hitStatusEl.style.display = show ? 'flex' : 'none';
         },
 
