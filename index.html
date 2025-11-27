@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>A-Frame AR — Floor Place Rectangle</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- A-Frame 1.7.0 -->
+    <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+    <!-- (Optional) extras for nice reticle -->
+    <script>
+      // Simple utility: toggle visibility
+      AFRAME.registerComponent('toggle-visible', {
+        schema: { on: {default: ''}, off: {default: ''} },
+        init() {
+          this.el.addEventListener(this.data.on, () => this.el.setAttribute('visible', true));
+          this.el.addEventListener(this.data.off, () => this.el.setAttribute('visible', false));
+        }
+      });
+
+      // Make the "card" place on first tap after a valid hit
+      AFRAME.registerComponent('place-once', {
+        schema: { reticle: {type: 'selector'} },
+        init() {
+          this.placed = false;
+          this.onSelect = this.onSelect.bind(this);
+          this.el.sceneEl.addEventListener('ar-hit-test-select', this.onSelect);
+        },
+        remove() {
+          this.el.sceneEl.removeEventListener('ar-hit-test-select', this.onSelect);
+        },
+        onSelect() {
+          if (this.placed || !this.data.reticle || !this.data.reticle.object3D.visible) return;
+          // Snap the card to the reticle pose and stop following
+          const {x, y, z} = this.data.reticle.object3D.position;
+          const q = this.data.reticle.object3D.quaternion.clone();
+          this.el.object3D.position.set(x, y, z);
+          this.el.object3D.quaternion.copy(q);
+          this.el.setAttribute('visible', true);
+          this.placed = true;
+          // Stop reticle updates after placement
+          this.el.sceneEl.removeAttribute('ar-hit-test');
+          this.data.reticle.setAttribute('visible', false);
+          document.getElementById('hint').style.display = 'none';
+        }
+      });
+
+      // Basic button behavior (clickable plane)
+      AFRAME.registerComponent('ui-button', {
+        schema: { label: {default: 'Press'} },
+        init() {
+          this.el.addEventListener('click', () => {
+            // Replace with your own action
+            alert('Button clicked!');
+          });
+        }
+      });
+    </script>
+    <style>
+      body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+      #overlayUI {
+        position: fixed; inset: 0; pointer-events: none; display:flex; align-items:flex-end; justify-content:center;
+        padding: 16px;
+      }
+      #hint {
+        pointer-events: none;
+        background: rgba(0,0,0,.55);
+        color: #fff; padding: 10px 14px; border-radius: 12px; font-size: 14px;
+        backdrop-filter: blur(6px);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- AR overlay hint text (shows while searching for planes) -->
+    <div id="overlayUI"><div id="hint">Move your phone to detect the floor, then tap to place.</div></div>
+
+    <!-- Scene requests WebXR AR with hit-test; mouse-origin cursor enables screen-tap interactions -->
+    <a-scene
+      renderer="colorManagement: true; physicallyCorrectLights: true"
+      webxr="mode: ar; referenceSpaceType: local-floor; requiredFeatures: hit-test; optionalFeatures: dom-overlay; overlayElement: #overlayUI"
+      ar-hit-test="target:#reticle; type: transient; "   <!-- updates #reticle to detected floor -->
+      device-orientation-permission-ui="enabled: false"
+      cursor="rayOrigin: mouse"
+      raycaster="objects: .clickable">
+
+      <!-- Light for nicer material appearance -->
+      <a-entity light="type: hemisphere; intensity: 0.8; groundColor: #777"></a-entity>
+      <a-entity light="type: directional; intensity: 0.6" position="0 3 1"></a-entity>
+
+      <!-- Camera (no controls in AR) -->
+      <a-entity camera look-controls="enabled:false"></a-entity>
+
+      <!-- Reticle that follows the hit-test result -->
+      <a-entity id="reticle" visible="false">
+        <a-ring radius-inner="0.045" radius-outer="0.06" rotation="-90 0 0"
+                material="color: #00BCD4; opacity: 0.95"></a-ring>
+        <a-cylinder height="0.001" radius="0.03" rotation="-90 0 0"
+                    material="color: #00BCD4; opacity: 0.35"></a-cylinder>
+      </a-entity>
+
+      <!-- Show reticle only when hit test has a result -->
+      <a-entity toggle-visible="on:ar-hit-test-start; off:enter-vr"></a-entity>
+      <!-- (A-Frame's ar-hit-test component sets the reticle visible when a plane is found) -->
+
+      <!-- The card to place: initially hidden, becomes visible on first valid tap -->
+      <a-entity id="card" visible="false" place-once="reticle:#reticle" position="0 0 -0.5" rotation="-90 0 0">
+        <!-- Card background -->
+        <a-plane width="0.32" height="0.18" material="color:#ffffff; opacity:0.98; metalness:0; roughness:1"
+                 shadow="cast: true; receive: true"></a-plane>
+
+        <!-- Title text -->
+        <a-text value="Hello AR 👋" align="center" color="#111"
+                position="0 0.055 0.001" width="0.5"></a-text>
+
+        <!-- Subtitle -->
+        <a-text value="Placed on your floor" align="center" color="#333"
+                position="0 0.02 0.001" width="0.5"></a-text>
+
+        <!-- Button (clickable) -->
+        <a-plane class="clickable" ui-button="label:Open"
+                 position="0 -0.045 0.001" width="0.18" height="0.045"
+                 material="color:#0ea5e9">
+          <a-text value="Open" align="center" color="#fff" width="0.4" position="0 0 0.001"></a-text>
+        </a-plane>
+      </a-entity>
+    </a-scene>
+  </body>
+</html>
