@@ -19,8 +19,11 @@
         init() {
           this.hintEl = document.getElementById('hint');
           this.reticle = document.getElementById('reticle');
+          this.card = document.getElementById('card');
           this.scene = this.el.sceneEl;
           this.scanInterval = null;
+          this.rescanTimeout = null;
+          this.rescanPending = false;
 
           this.onEnterVR = this.onEnterVR.bind(this);
           this.onHitTestStart = this.onHitTestStart.bind(this);
@@ -29,6 +32,7 @@
           this.onHitTestUnavailable = this.onHitTestUnavailable.bind(this);
           this.onHitTestError = this.onHitTestError.bind(this);
           this.onExitVR = this.onExitVR.bind(this);
+          this.onDoubleClick = this.onDoubleClick.bind(this);
 
           this.scene.addEventListener('enter-vr', this.onEnterVR);
           this.scene.addEventListener('ar-hit-test-start', this.onHitTestStart);
@@ -37,6 +41,7 @@
           this.scene.addEventListener('ar-hit-test-unavailable', this.onHitTestUnavailable);
           this.scene.addEventListener('ar-hit-test-error', this.onHitTestError);
           this.scene.addEventListener('exit-vr', this.onExitVR);
+          document.addEventListener('dblclick', this.onDoubleClick);
         },
 
         remove() {
@@ -47,6 +52,7 @@
           this.scene.removeEventListener('ar-hit-test-unavailable', this.onHitTestUnavailable);
           this.scene.removeEventListener('ar-hit-test-error', this.onHitTestError);
           this.scene.removeEventListener('exit-vr', this.onExitVR);
+          document.removeEventListener('dblclick', this.onDoubleClick);
         },
 
         updateHint(text, show = true) {
@@ -74,6 +80,11 @@
             clearInterval(this.scanInterval);
             this.scanInterval = null;
           }
+          if (this.rescanTimeout) {
+            clearTimeout(this.rescanTimeout);
+            this.rescanTimeout = null;
+          }
+          this.rescanPending = false;
         },
 
         toggleReticle(visible) {
@@ -89,6 +100,43 @@
           this.toggleReticle(false);
         },
 
+        onDoubleClick() {
+          if (!this.scene.is('ar-mode')) {
+            this.updateHint('AR noch nicht aktiv – tippe unten rechts auf „AR“, um zu starten.');
+            return;
+          }
+
+          this.restartScan();
+        },
+
+        restartScan() {
+          this.rescanPending = true;
+          this.toggleReticle(false);
+          this.resetPlacement();
+          this.startScanningHint();
+          this.updateHint('Neuscan gestartet… suche erneut nach einer ebenen Fläche.');
+
+          this.scene.emit('ar-hit-test-start');
+
+          this.rescanTimeout = setTimeout(() => {
+            if (!this.rescanPending) return;
+            this.updateHint(
+              'Keine neue Fläche gefunden. Bewege die Kamera leicht und stelle sicher, dass der Bereich gut beleuchtet ist.'
+            );
+            this.rescanPending = false;
+          }, 8000);
+        },
+
+        resetPlacement() {
+          if (!this.card) return;
+          this.card.setAttribute('visible', false);
+
+          const placeOnce = this.card.components['place-once'];
+          if (placeOnce) {
+            placeOnce.placed = false;
+          }
+        },
+
         onHitTestStart() {
           this.startScanningHint();
           this.toggleReticle(false);
@@ -96,7 +144,11 @@
 
         onHitTestAchieved() {
           this.stopScanningHint();
-          this.updateHint('Fläche erkannt ✅ Tippe auf den Bildschirm, um die Karte dort abzulegen.');
+          const message = this.rescanPending
+            ? 'Neuscan erfolgreich ✅ Tippe auf den Bildschirm, um die Karte neu zu platzieren.'
+            : 'Fläche erkannt ✅ Tippe auf den Bildschirm, um die Karte dort abzulegen.';
+          this.updateHint(message);
+          this.rescanPending = false;
           this.toggleReticle(true);
         },
 
