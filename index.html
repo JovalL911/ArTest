@@ -74,10 +74,11 @@
     <div id="overlayUI"><div id="hint">Move your phone to detect the floor, then tap to place.</div></div>
 
     <!-- Scene requests WebXR AR with hit-test; mouse-origin cursor enables screen-tap interactions -->
+     <!-- updates #reticle to detected floor -->
     <a-scene
       renderer="colorManagement: true; physicallyCorrectLights: true"
       webxr="mode: ar; referenceSpaceType: local-floor; requiredFeatures: hit-test; optionalFeatures: dom-overlay; overlayElement: #overlayUI"
-      ar-hit-test="target:#reticle; type: transient; "   <!-- updates #reticle to detected floor -->
+      ar-hit-test="target:#reticle; type: transient; "   
       device-orientation-permission-ui="enabled: false"
       cursor="rayOrigin: mouse"
       raycaster="objects: .clickable">
