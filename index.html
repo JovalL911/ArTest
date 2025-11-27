@@ -20,6 +20,7 @@
           this.hintEl = document.getElementById('hint');
           this.reticle = document.getElementById('reticle');
           this.scene = this.el.sceneEl;
+          this.scanInterval = null;
 
           this.onEnterVR = this.onEnterVR.bind(this);
           this.onHitTestStart = this.onHitTestStart.bind(this);
@@ -54,6 +55,27 @@
           this.hintEl.style.display = show ? 'block' : 'none';
         },
 
+        startScanningHint() {
+          this.stopScanningHint();
+          this.updateHint(
+            'AR gestartet – suche eine ebene, gut beleuchtete Fläche. Bewege das Gerät langsam in einer „8“, bis ein blaues Ziel auftaucht.'
+          );
+
+          // Alle paar Sekunden Erinnerung einblenden, damit der Screen nicht "leer" wirkt.
+          this.scanInterval = setInterval(() => {
+            this.updateHint(
+              'Scanne weiter… halte die Kamera auf eine strukturierte Fläche (Tisch, Boden) gerichtet und bewege dich leicht, bis das Ziel erscheint.'
+            );
+          }, 4500);
+        },
+
+        stopScanningHint() {
+          if (this.scanInterval) {
+            clearInterval(this.scanInterval);
+            this.scanInterval = null;
+          }
+        },
+
         toggleReticle(visible) {
           if (this.reticle) {
             this.reticle.setAttribute('visible', visible);
@@ -63,40 +85,41 @@
         onEnterVR() {
           if (!this.scene.is('ar-mode')) return;
 
-          this.updateHint(
-            'AR gestartet. Bewege dein Smartphone langsam, damit die Kamera Textur und Kanten erkennt – am besten auf gut beleuchteten, flachen Flächen (Tisch, Boden).'
-          );
+          this.startScanningHint();
           this.toggleReticle(false);
         },
 
         onHitTestStart() {
-          this.updateHint(
-            'Suche eine ebene, strukturierte Fläche (Boden, Tischplatte). Etwas Bewegung in einer „8“ hilft, damit das Gerät Tiefe und Oberfläche erkennt.'
-          );
+          this.startScanningHint();
           this.toggleReticle(false);
         },
 
         onHitTestAchieved() {
+          this.stopScanningHint();
           this.updateHint('Fläche erkannt ✅ Tippe auf den Bildschirm, um die Karte dort abzulegen.');
           this.toggleReticle(true);
         },
 
         onHitTestSelect() {
+          this.stopScanningHint();
           this.updateHint('Karte platziert 🎉 Die Fläche bleibt verankert, bewege die Kamera ruhig weiter.');
           this.toggleReticle(false);
         },
 
         onHitTestUnavailable() {
+          this.stopScanningHint();
           this.updateHint('Hit-Test nicht verfügbar auf diesem Gerät/Browser. Prüfe WebXR- und Kamera-Support.');
           this.toggleReticle(false);
         },
 
         onHitTestError() {
+          this.stopScanningHint();
           this.updateHint('Hit-Test Fehler. Erlaube Kamera- und Bewegungssensoren und stelle ausreichende Beleuchtung sicher.');
           this.toggleReticle(false);
         },
 
         onExitVR() {
+          this.stopScanningHint();
           this.toggleReticle(false);
           this.updateHint('Tippe unten rechts auf „AR“, um die Kamera zu starten.', false);
         }
