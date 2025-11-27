@@ -5,16 +5,31 @@
     <title>A-Frame AR — Floor Place Rectangle</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- A-Frame 1.7.0 (inkl. WebXR / AR / ar-hit-test) -->
     <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/aframe-ar-hit-test-component@1.1.0/dist/aframe-ar-hit-test-component.min.js"></script>
 
     <script>
-      /**
-       * ar-hints
-       * - Zeigt dynamisch Hinweise zum Status des Hit-Tests im Overlay an
-       * - Erklärt, wie man eine geeignete Fläche findet (Licht, Textur, Bewegung)
-       */
+      const HINT_MESSAGES = {
+        start:
+          'AR gestartet – suche eine ebene, gut beleuchtete Fläche. Bewege das Gerät langsam in einer „8“, bis ein blaues Ziel auftaucht.',
+        keepScanning:
+          'Scanne weiter… halte die Kamera auf eine strukturierte Fläche (Tisch, Boden) gerichtet und bewege dich leicht, bis das Ziel erscheint.',
+        promptStart: 'AR noch nicht aktiv – tippe unten rechts auf „AR“, um zu starten.',
+        rescan: 'Neuscan gestartet… suche erneut nach einer ebenen Fläche.',
+        rescanFail:
+          'Keine neue Fläche gefunden. Bewege die Kamera leicht und stelle sicher, dass der Bereich gut beleuchtet ist.',
+        found:
+          'Fläche erkannt ✅ Tippe auf den Bildschirm, um die Karte dort abzulegen.',
+        foundRescan:
+          'Neuscan erfolgreich ✅ Tippe auf den Bildschirm, um die Karte neu zu platzieren.',
+        placed:
+          'Karte platziert 🎉 Die Fläche bleibt verankert, bewege die Kamera ruhig weiter.',
+        unavailable: 'Hit-Test nicht verfügbar auf diesem Gerät/Browser. Prüfe WebXR- und Kamera-Support.',
+        error:
+          'Hit-Test Fehler. Erlaube Kamera- und Bewegungssensoren und stelle ausreichende Beleuchtung sicher.',
+        idle: 'Tippe unten rechts auf „AR“, um die Kamera zu starten.'
+      };
+
       AFRAME.registerComponent('ar-hints', {
         init() {
           this.hintEl = document.getElementById('hint');
@@ -27,33 +42,27 @@
           this.rescanTimeout = null;
           this.rescanPending = false;
 
-          this.onEnterVR = this.onEnterVR.bind(this);
-          this.onHitTestStart = this.onHitTestStart.bind(this);
-          this.onHitTestAchieved = this.onHitTestAchieved.bind(this);
-          this.onHitTestSelect = this.onHitTestSelect.bind(this);
-          this.onHitTestUnavailable = this.onHitTestUnavailable.bind(this);
-          this.onHitTestError = this.onHitTestError.bind(this);
-          this.onExitVR = this.onExitVR.bind(this);
-          this.onDoubleClick = this.onDoubleClick.bind(this);
+          this.events = {
+            'enter-vr': this.onEnterVR.bind(this),
+            'ar-hit-test-start': this.onHitTestStart.bind(this),
+            'ar-hit-test-achieved': this.onHitTestAchieved.bind(this),
+            'ar-hit-test-select': this.onHitTestSelect.bind(this),
+            'ar-hit-test-unavailable': this.onHitTestUnavailable.bind(this),
+            'ar-hit-test-error': this.onHitTestError.bind(this),
+            'exit-vr': this.onExitVR.bind(this)
+          };
 
-          this.scene.addEventListener('enter-vr', this.onEnterVR);
-          this.scene.addEventListener('ar-hit-test-start', this.onHitTestStart);
-          this.scene.addEventListener('ar-hit-test-achieved', this.onHitTestAchieved);
-          this.scene.addEventListener('ar-hit-test-select', this.onHitTestSelect);
-          this.scene.addEventListener('ar-hit-test-unavailable', this.onHitTestUnavailable);
-          this.scene.addEventListener('ar-hit-test-error', this.onHitTestError);
-          this.scene.addEventListener('exit-vr', this.onExitVR);
+          Object.entries(this.events).forEach(([event, handler]) => {
+            this.scene.addEventListener(event, handler);
+          });
+          this.onDoubleClick = this.onDoubleClick.bind(this);
           document.addEventListener('dblclick', this.onDoubleClick);
         },
 
         remove() {
-          this.scene.removeEventListener('enter-vr', this.onEnterVR);
-          this.scene.removeEventListener('ar-hit-test-start', this.onHitTestStart);
-          this.scene.removeEventListener('ar-hit-test-achieved', this.onHitTestAchieved);
-          this.scene.removeEventListener('ar-hit-test-select', this.onHitTestSelect);
-          this.scene.removeEventListener('ar-hit-test-unavailable', this.onHitTestUnavailable);
-          this.scene.removeEventListener('ar-hit-test-error', this.onHitTestError);
-          this.scene.removeEventListener('exit-vr', this.onExitVR);
+          Object.entries(this.events).forEach(([event, handler]) => {
+            this.scene.removeEventListener(event, handler);
+          });
           document.removeEventListener('dblclick', this.onDoubleClick);
         },
 
@@ -72,15 +81,9 @@
 
         startScanningHint() {
           this.stopScanningHint();
-          this.updateHint(
-            'AR gestartet – suche eine ebene, gut beleuchtete Fläche. Bewege das Gerät langsam in einer „8“, bis ein blaues Ziel auftaucht.'
-          );
-
-          // Alle paar Sekunden Erinnerung einblenden, damit der Screen nicht "leer" wirkt.
+          this.updateHint(HINT_MESSAGES.start);
           this.scanInterval = setInterval(() => {
-            this.updateHint(
-              'Scanne weiter… halte die Kamera auf eine strukturierte Fläche (Tisch, Boden) gerichtet und bewege dich leicht, bis das Ziel erscheint.'
-            );
+            this.updateHint(HINT_MESSAGES.keepScanning);
           }, 4500);
         },
 
@@ -112,7 +115,7 @@
 
         onDoubleClick() {
           if (!this.scene.is('ar-mode')) {
-            this.updateHint('AR noch nicht aktiv – tippe unten rechts auf „AR“, um zu starten.');
+            this.updateHint(HINT_MESSAGES.promptStart);
             return;
           }
 
@@ -124,16 +127,14 @@
           this.toggleReticle(false);
           this.resetPlacement();
           this.startScanningHint();
-          this.updateHint('Neuscan gestartet… suche erneut nach einer ebenen Fläche.');
+          this.updateHint(HINT_MESSAGES.rescan);
           this.updateHitStatus('nichts gefunden');
 
           this.scene.emit('ar-hit-test-start');
 
           this.rescanTimeout = setTimeout(() => {
             if (!this.rescanPending) return;
-            this.updateHint(
-              'Keine neue Fläche gefunden. Bewege die Kamera leicht und stelle sicher, dass der Bereich gut beleuchtet ist.'
-            );
+            this.updateHint(HINT_MESSAGES.rescanFail);
             this.rescanPending = false;
           }, 8000);
         },
@@ -157,8 +158,8 @@
         onHitTestAchieved() {
           this.stopScanningHint();
           const message = this.rescanPending
-            ? 'Neuscan erfolgreich ✅ Tippe auf den Bildschirm, um die Karte neu zu platzieren.'
-            : 'Fläche erkannt ✅ Tippe auf den Bildschirm, um die Karte dort abzulegen.';
+            ? HINT_MESSAGES.foundRescan
+            : HINT_MESSAGES.found;
           this.updateHint(message);
           this.rescanPending = false;
           this.toggleReticle(true);
@@ -167,21 +168,21 @@
 
         onHitTestSelect() {
           this.stopScanningHint();
-          this.updateHint('Karte platziert 🎉 Die Fläche bleibt verankert, bewege die Kamera ruhig weiter.');
+          this.updateHint(HINT_MESSAGES.placed);
           this.toggleReticle(false);
           this.updateHitStatus('YES, hab etwas.');
         },
 
         onHitTestUnavailable() {
           this.stopScanningHint();
-          this.updateHint('Hit-Test nicht verfügbar auf diesem Gerät/Browser. Prüfe WebXR- und Kamera-Support.');
+          this.updateHint(HINT_MESSAGES.unavailable);
           this.toggleReticle(false);
           this.updateHitStatus('nichts gefunden');
         },
 
         onHitTestError() {
           this.stopScanningHint();
-          this.updateHint('Hit-Test Fehler. Erlaube Kamera- und Bewegungssensoren und stelle ausreichende Beleuchtung sicher.');
+          this.updateHint(HINT_MESSAGES.error);
           this.toggleReticle(false);
           this.updateHitStatus('nichts gefunden');
         },
@@ -189,7 +190,7 @@
         onExitVR() {
           this.stopScanningHint();
           this.toggleReticle(false);
-          this.updateHint('Tippe unten rechts auf „AR“, um die Kamera zu starten.', false);
+          this.updateHint(HINT_MESSAGES.idle, false);
           this.updateHitStatus('nichts gefunden', false);
         }
       });
@@ -253,23 +254,29 @@
           });
         },
 
+        timestamp() {
+          return new Date().toLocaleTimeString();
+        },
+
+        appendLog(message) {
+          if (!this.statusLog) return;
+
+          const entry = document.createElement('li');
+          entry.textContent = `${this.timestamp()} — ${message}`;
+          this.statusLog.appendChild(entry);
+
+          while (this.statusLog.children.length > 8) {
+            this.statusLog.removeChild(this.statusLog.firstChild);
+          }
+        },
+
         log(message) {
           console.info(`[AR DEBUG] ${message}`);
           if (this.statusEl) {
-            const now = new Date().toLocaleTimeString();
-            this.statusEl.textContent = `${now} — ${message}`;
+            this.statusEl.textContent = `${this.timestamp()} — ${message}`;
           }
 
-          if (this.statusLog) {
-            const now = new Date().toLocaleTimeString();
-            const entry = document.createElement('li');
-            entry.textContent = `${now} — ${message}`;
-            this.statusLog.appendChild(entry);
-
-            while (this.statusLog.children.length > 8) {
-              this.statusLog.removeChild(this.statusLog.firstChild);
-            }
-          }
+          this.appendLog(message);
         }
       });
     </script>
