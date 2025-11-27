@@ -11,6 +11,98 @@
 
     <script>
       /**
+       * ar-hints
+       * - Zeigt dynamisch Hinweise zum Status des Hit-Tests im Overlay an
+       * - Erklärt, wie man eine geeignete Fläche findet (Licht, Textur, Bewegung)
+       */
+      AFRAME.registerComponent('ar-hints', {
+        init() {
+          this.hintEl = document.getElementById('hint');
+          this.reticle = document.getElementById('reticle');
+          this.scene = this.el.sceneEl;
+
+          this.onEnterVR = this.onEnterVR.bind(this);
+          this.onHitTestStart = this.onHitTestStart.bind(this);
+          this.onHitTestAchieved = this.onHitTestAchieved.bind(this);
+          this.onHitTestSelect = this.onHitTestSelect.bind(this);
+          this.onHitTestUnavailable = this.onHitTestUnavailable.bind(this);
+          this.onHitTestError = this.onHitTestError.bind(this);
+          this.onExitVR = this.onExitVR.bind(this);
+
+          this.scene.addEventListener('enter-vr', this.onEnterVR);
+          this.scene.addEventListener('ar-hit-test-start', this.onHitTestStart);
+          this.scene.addEventListener('ar-hit-test-achieved', this.onHitTestAchieved);
+          this.scene.addEventListener('ar-hit-test-select', this.onHitTestSelect);
+          this.scene.addEventListener('ar-hit-test-unavailable', this.onHitTestUnavailable);
+          this.scene.addEventListener('ar-hit-test-error', this.onHitTestError);
+          this.scene.addEventListener('exit-vr', this.onExitVR);
+        },
+
+        remove() {
+          this.scene.removeEventListener('enter-vr', this.onEnterVR);
+          this.scene.removeEventListener('ar-hit-test-start', this.onHitTestStart);
+          this.scene.removeEventListener('ar-hit-test-achieved', this.onHitTestAchieved);
+          this.scene.removeEventListener('ar-hit-test-select', this.onHitTestSelect);
+          this.scene.removeEventListener('ar-hit-test-unavailable', this.onHitTestUnavailable);
+          this.scene.removeEventListener('ar-hit-test-error', this.onHitTestError);
+          this.scene.removeEventListener('exit-vr', this.onExitVR);
+        },
+
+        updateHint(text, show = true) {
+          if (!this.hintEl) return;
+          this.hintEl.textContent = text;
+          this.hintEl.style.display = show ? 'block' : 'none';
+        },
+
+        toggleReticle(visible) {
+          if (this.reticle) {
+            this.reticle.setAttribute('visible', visible);
+          }
+        },
+
+        onEnterVR() {
+          if (!this.scene.is('ar-mode')) return;
+
+          this.updateHint(
+            'AR gestartet. Bewege dein Smartphone langsam, damit die Kamera Textur und Kanten erkennt – am besten auf gut beleuchteten, flachen Flächen (Tisch, Boden).'
+          );
+          this.toggleReticle(false);
+        },
+
+        onHitTestStart() {
+          this.updateHint(
+            'Suche eine ebene, strukturierte Fläche (Boden, Tischplatte). Etwas Bewegung in einer „8“ hilft, damit das Gerät Tiefe und Oberfläche erkennt.'
+          );
+          this.toggleReticle(false);
+        },
+
+        onHitTestAchieved() {
+          this.updateHint('Fläche erkannt ✅ Tippe auf den Bildschirm, um die Karte dort abzulegen.');
+          this.toggleReticle(true);
+        },
+
+        onHitTestSelect() {
+          this.updateHint('Karte platziert 🎉 Die Fläche bleibt verankert, bewege die Kamera ruhig weiter.');
+          this.toggleReticle(false);
+        },
+
+        onHitTestUnavailable() {
+          this.updateHint('Hit-Test nicht verfügbar auf diesem Gerät/Browser. Prüfe WebXR- und Kamera-Support.');
+          this.toggleReticle(false);
+        },
+
+        onHitTestError() {
+          this.updateHint('Hit-Test Fehler. Erlaube Kamera- und Bewegungssensoren und stelle ausreichende Beleuchtung sicher.');
+          this.toggleReticle(false);
+        },
+
+        onExitVR() {
+          this.toggleReticle(false);
+          this.updateHint('Tippe unten rechts auf „AR“, um die Kamera zu starten.', false);
+        }
+      });
+
+      /**
        * place-once
        * - Wartet auf das erste ar-hit-test-select Event (Tap in AR)
        * - Setzt die Karte auf die Position des Reticles
@@ -34,29 +126,12 @@
           if (this.placed || !reticle || !reticle.object3D.visible) return;
 
           // Position und Rotation der Karte auf die des Reticles setzen
-          // Wenn AR gestartet wird */
-          scene.addEventListener('enter-vr', () => {
-            if (!scene.is('ar-mode')) return;
-            hint.style.display = 'block';
-            hint.textContent = 'Bewege dein Smartphone, um eine Fläche zu finden …';
-          });
+          this.el.object3D.position.copy(reticle.object3D.position);
+          this.el.object3D.quaternion.copy(reticle.object3D.quaternion);
+          this.el.setAttribute('visible', true);
 
-          // Hit-Test hat eine Fläche gefunden
-          scene.addEventListener('ar-hit-test-achieved', () => {
-            hint.textContent = 'Tippe auf den Bildschirm, um die Karte zu platzieren.';
-            reticle.setAttribute('visible', true);
-          });
-
-          // Karte wurde platziert (place-once blendet den Hinweis zusätzlich aus)
-          scene.addEventListener('ar-hit-test-select', () => {
-            hint.textContent = 'Karte platziert 🎉';
-          });
-
-          // Wenn AR wieder verlassen wird
-          scene.addEventListener('exit-vr', () => {
-            reticle.setAttribute('visible', false);
-            hint.style.display = 'none';
-          });
+          this.placed = true;
+          reticle.setAttribute('visible', false);
         }
       });
 
@@ -81,29 +156,9 @@
             ['ar-hit-test-error', 'Hit-test error: check console'],
             ['ar-hit-test-unavailable', 'Hit-test unavailable on device'],
           ];
-
-          events.forEach(([name, message]) => {
-            scene.addEventListener(name, () => this.log(message));
+          events.forEach(([event, message]) => {
+            scene.addEventListener(event, () => this.log(message));
           });
-
-          if (!AFRAME.components['ar-hit-test']) {
-            this.log('ar-hit-test component not loaded – check the script include.');
-          }
-
-          if (!navigator.xr) {
-            this.log('WebXR not available in this browser.');
-          } else {
-            navigator.xr.isSessionSupported('immersive-ar')
-              .then((supported) => {
-                this.log(supported ? 'AR supported: tap the AR button to start.' : 'AR not supported on this device/browser.');
-              })
-              .catch((err) => this.log(`AR support check failed: ${err.message}`));
-          }
-
-          const isSecure = window.isSecureContext || location.hostname === 'localhost';
-          if (!isSecure) {
-            this.log('Warning: WebXR requires HTTPS. Open this page via https:// or localhost.');
-          }
         },
 
         log(message) {
@@ -131,6 +186,8 @@
       body {
         margin: 0;
         font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        background: #0b1724;
+        color: #e2e8f0;
       }
 
       /* DOM-Overlay für Text-Hinweise */
@@ -152,6 +209,9 @@
         border-radius: 12px;
         font-size: 14px;
         backdrop-filter: blur(6px);
+        max-width: min(480px, 90vw);
+        text-align: center;
+        line-height: 1.45;
       }
 
       #debugPanel {
@@ -180,13 +240,6 @@
         margin-bottom: 4px;
       }
     </style>
-  </head>
-
-  <body>
-    <!-- AR-Overlay Hinweistext (UI bleibt auch im AR-Modus sichtbar dank dom-overlay) -->
-    <div id="overlayUI">
-      <div id="hint">Tippe unten rechts auf „AR“, um die Kamera zu starten.</div>
-    </div>
 
     <div id="debugPanel">
       <strong>AR Status:</strong>
@@ -211,8 +264,7 @@
       xr-mode-ui="XRMode: ar; enterAREnabled: true"
       ar-hit-test="target: #reticle; type: transient"
       cursor="rayOrigin: mouse"
-      raycaster="objects: .clickable"
-      ar-hints>
+      raycaster="objects: .clickable" 
       ar-hints
       ar-debug>
 
@@ -229,13 +281,34 @@
           radius-inner="0.045"
           radius-outer="0.06"
           rotation="-90 0 0"
-          material="color: #00BCD4; opacity: 0.95">
+          material="color: #00bcd4; opacity: 0.95">
         </a-ring>
 
         <a-cylinder
-          height="2.0"
-          radius="1.0"
+          height="0.001"
+          radius="0.03"
           rotation="-90 0 0"
-          material="color: #00BCD4; opacity: 0.35">
+          material="color: #00bcd4; opacity: 0.35">
         </a-cylinder>
       </a-entity>
+
+      <!-- Deine "Karte" als leichtes UI-Panel -->
+      <a-entity
+        id="card"
+        class="clickable"
+        visible="false"
+        geometry="primitive: plane; width: 0.55; height: 0.32"
+        material="color: #0ea5e9; opacity: 0.92; roughness: 0.35; metalness: 0.1"
+        text="value: AR Surface Demo; align: center; width: 1.5; color: #e0f2fe; wrapCount: 18"
+        position="0 -10 0"
+        place-once="reticle: #reticle">
+        <a-entity
+          geometry="primitive: plane; width: 0.5; height: 0.28"
+          material="color: #020617; opacity: 0.6"
+          position="0 0 0.001">
+        </a-entity>
+      </a-entity>
+
+    </a-scene>
+  </body>
+</html>
