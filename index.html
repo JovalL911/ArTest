@@ -6,9 +6,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
     <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/aframe-ar-hit-test-component@1.1.0/dist/aframe-ar-hit-test-component.min.js"></script>
 
     <script>
+      async function checkARSupport() {
+        try {
+          if (!('xr' in navigator) || typeof navigator.xr.isSessionSupported !== 'function') {
+            return false;
+          }
+
+          const supported = await navigator.xr.isSessionSupported('immersive-ar');
+          return Boolean(supported);
+        } catch (error) {
+          console.warn('AR support check failed', error);
+          return false;
+        }
+      }
+
       const HINT_MESSAGES = {
         start:
           'AR gestartet – suche eine ebene, gut beleuchtete Fläche. Bewege das Gerät langsam in einer „8“, bis ein blaues Ziel auftaucht.',
@@ -37,6 +50,8 @@
           this.card = document.getElementById('card');
           this.hitStatusBar = document.getElementById('hitStatusBar');
           this.hitStatusEl = document.getElementById('hitStatus');
+          this.hitDebug = document.getElementById('hitDebug');
+          this.hitDebugStateEl = document.getElementById('hitDebugState');
           this.scene = this.el.sceneEl;
           this.scanInterval = null;
           this.rescanTimeout = null;
@@ -57,6 +72,8 @@
           });
           this.onDoubleClick = this.onDoubleClick.bind(this);
           document.addEventListener('dblclick', this.onDoubleClick);
+
+          this.setHitDebugState(false);
         },
 
         remove() {
@@ -77,6 +94,22 @@
           this.hitStatusEl.textContent = text;
           this.hitStatusBar.style.display = show ? 'flex' : 'none';
           this.hitStatusEl.style.display = show ? 'flex' : 'none';
+        },
+
+        setHitDebugState(detected) {
+          if (!this.hitDebugStateEl || !this.hitDebug) return;
+
+          // Always show the debug bar while AR is active; we'll hide it explicitly on exit
+          this.hitDebug.style.display = 'block';
+          this.hitDebugStateEl.style.fontWeight = '700';
+
+          if (detected) {
+            this.hitDebugStateEl.textContent = 'detected';
+            this.hitDebugStateEl.style.color = '#22c55e'; // green
+          } else {
+            this.hitDebugStateEl.textContent = 'not detected yet';
+            this.hitDebugStateEl.style.color = '#ef4444'; // red
+          }
         },
 
         startScanningHint() {
@@ -111,6 +144,7 @@
           this.startScanningHint();
           this.toggleReticle(false);
           this.updateHitStatus('nichts gefunden');
+          this.setHitDebugState(false);
         },
 
         onDoubleClick() {
@@ -129,6 +163,7 @@
           this.startScanningHint();
           this.updateHint(HINT_MESSAGES.rescan);
           this.updateHitStatus('nichts gefunden');
+          this.setHitDebugState(false);
 
           this.scene.emit('ar-hit-test-start');
 
@@ -153,6 +188,7 @@
           this.startScanningHint();
           this.toggleReticle(false);
           this.updateHitStatus('nichts gefunden');
+          this.setHitDebugState(false);
         },
 
         onHitTestAchieved() {
@@ -164,6 +200,7 @@
           this.rescanPending = false;
           this.toggleReticle(true);
           this.updateHitStatus('YES, hab etwas.');
+          this.setHitDebugState(true);
         },
 
         onHitTestSelect() {
@@ -171,6 +208,7 @@
           this.updateHint(HINT_MESSAGES.placed);
           this.toggleReticle(false);
           this.updateHitStatus('YES, hab etwas.');
+          this.setHitDebugState(true);
         },
 
         onHitTestUnavailable() {
@@ -178,6 +216,7 @@
           this.updateHint(HINT_MESSAGES.unavailable);
           this.toggleReticle(false);
           this.updateHitStatus('nichts gefunden');
+          this.setHitDebugState(false);
         },
 
         onHitTestError() {
@@ -185,6 +224,7 @@
           this.updateHint(HINT_MESSAGES.error);
           this.toggleReticle(false);
           this.updateHitStatus('nichts gefunden');
+          this.setHitDebugState(false);
         },
 
         onExitVR() {
@@ -192,6 +232,7 @@
           this.toggleReticle(false);
           this.updateHint(HINT_MESSAGES.idle, false);
           this.updateHitStatus('nichts gefunden', false);
+          this.setHitDebugState(false);
         }
       });
 
@@ -279,6 +320,41 @@
           this.appendLog(message);
         }
       });
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const hintEl = document.getElementById('hint');
+        const scene = document.querySelector('a-scene');
+
+        checkARSupport().then((supported) => {
+          if (supported) return;
+
+          if (hintEl) {
+            hintEl.textContent =
+              'AR / WebXR Hit-Test wird auf diesem Gerät/Browser nicht unterstützt.';
+          }
+
+          let attempts = 0;
+          const disableXRButton = () => {
+            const xrButtons = document.querySelectorAll('.a-enter-vr, .a-enter-ar');
+            if (!xrButtons.length && attempts < 120) {
+              attempts += 1;
+              requestAnimationFrame(disableXRButton);
+              return;
+            }
+
+            xrButtons.forEach((btn) => {
+              btn.style.display = 'none';
+              btn.setAttribute('disabled', 'true');
+            });
+          };
+
+          disableXRButton();
+
+          if (scene) {
+            scene.setAttribute('xr-mode-ui', 'XRMode: ar; enterAREnabled: false');
+          }
+        });
+      });
     </script>
 
     <style>
@@ -289,10 +365,27 @@
         color: #e2e8f0;
       }
 
+      #hitDebug {
+        position: fixed;
+        top: 8px;
+        left: 0;
+        right: 0;
+        display: none;
+        text-align: center;
+        font-size: 14px;
+        pointer-events: none;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+      }
+
+      #hitDebugState {
+        font-weight: 700;
+        color: #ef4444;
+      }
+
       /* Overlay oben für kompaktes Hit-Test-Feedback */
       #hitStatusBar {
         position: fixed;
-        top: 12px;
+        top: 40px;
         left: 0;
         right: 0;
         display: none;
@@ -374,6 +467,7 @@
     </style>
   </head>
   <body>
+    <div id="hitDebug">Hit detection: <span id="hitDebugState">not detected yet</span></div>
     <div id="hitStatusBar" aria-live="polite">
       <div id="hitStatusHint">Scanne weiter… halte die Kamera auf eine strukturierte Fläche.</div>
       <div id="hitStatus">nichts gefunden</div>
