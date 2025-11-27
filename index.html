@@ -7,6 +7,7 @@
 
     <!-- A-Frame 1.7.0 (inkl. WebXR / AR / ar-hit-test) -->
     <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/aframe-ar-hit-test-component@1.1.0/dist/aframe-ar-hit-test-component.min.js"></script>
 
     <script>
       /**
@@ -32,51 +33,7 @@
           const reticle = this.data.reticle;
           if (this.placed || !reticle || !reticle.object3D.visible) return;
 
-          // Position & Rotation vom Reticle übernehmen
-          this.el.object3D.position.copy(reticle.object3D.position);
-          this.el.object3D.quaternion.copy(reticle.object3D.quaternion);
-
-          // Karte anzeigen und merken, dass sie platziert wurde
-          this.el.setAttribute('visible', true);
-          this.placed = true;
-
-          // Hit-Test abschalten und Reticle ausblenden
-          this.el.sceneEl.setAttribute('ar-hit-test', 'enabled: false');
-          reticle.setAttribute('visible', false);
-
-          // Overlay-Hinweis verstecken
-          const hint = document.getElementById('hint');
-          if (hint) hint.style.display = 'none';
-        }
-      });
-
-      /**
-       * ui-button
-       * - Einfacher Klick-Handler für dein AR-Button-Plane
-       * - Hier kannst du später Navigation, API-Calls etc. einbauen
-       */
-      AFRAME.registerComponent('ui-button', {
-        schema: { label: { default: 'Press' } },
-        init() {
-          this.el.addEventListener('click', () => {
-            alert('Button clicked!');
-          });
-        }
-      });
-
-      /**
-       * ar-hints
-       * - Kümmert sich um die Text-Hinweise während der AR-Session
-       * - Reagiert auf Events des ar-hit-test Components
-       */
-      AFRAME.registerComponent('ar-hints', {
-        init() {
-          const scene = this.el.sceneEl;
-          const hint = document.getElementById('hint');
-          const reticle = document.getElementById('reticle');
-
-          if (!hint || !reticle) return;
-
+@@ -80,106 +81,205 @@
           // Wenn AR gestartet wird
           scene.addEventListener('enter-vr', () => {
             if (!scene.is('ar-mode')) return;
@@ -100,6 +57,72 @@
             reticle.setAttribute('visible', false);
             hint.style.display = 'none';
           });
+        }
+      });
+
+      /**
+       * ar-debug
+       * - Protokolliert wichtige AR- und Hit-Test-Ereignisse
+       * - Schreibt in die Konsole und in das Debug-Panel unten links
+       */
+      AFRAME.registerComponent('ar-debug', {
+        init() {
+          this.statusEl = document.getElementById('status');
+          this.statusLog = document.getElementById('statusLog');
+          this.log('Scene initialized, waiting for AR session…');
+
+          const scene = this.el.sceneEl;
+          const events = [
+            ['enter-vr', 'XR session started'],
+            ['exit-vr', 'XR session ended'],
+            ['ar-hit-test-start', 'Hit-test started'],
+            ['ar-hit-test-achieved', 'Surface found'],
+            ['ar-hit-test-select', 'Placement tap received'],
+            ['ar-hit-test-error', 'Hit-test error: check console'],
+            ['ar-hit-test-unavailable', 'Hit-test unavailable on device'],
+          ];
+
+          events.forEach(([name, message]) => {
+            scene.addEventListener(name, () => this.log(message));
+          });
+
+          if (!AFRAME.components['ar-hit-test']) {
+            this.log('ar-hit-test component not loaded – check the script include.');
+          }
+
+          if (!navigator.xr) {
+            this.log('WebXR not available in this browser.');
+          } else {
+            navigator.xr.isSessionSupported('immersive-ar')
+              .then((supported) => {
+                this.log(supported ? 'AR supported: tap the AR button to start.' : 'AR not supported on this device/browser.');
+              })
+              .catch((err) => this.log(`AR support check failed: ${err.message}`));
+          }
+
+          const isSecure = window.isSecureContext || location.hostname === 'localhost';
+          if (!isSecure) {
+            this.log('Warning: WebXR requires HTTPS. Open this page via https:// or localhost.');
+          }
+        },
+
+        log(message) {
+          console.info(`[AR DEBUG] ${message}`);
+          if (this.statusEl) {
+            const now = new Date().toLocaleTimeString();
+            this.statusEl.textContent = `${now} — ${message}`;
+          }
+
+          if (this.statusLog) {
+            const now = new Date().toLocaleTimeString();
+            const entry = document.createElement('li');
+            entry.textContent = `${now} — ${message}`;
+            this.statusLog.appendChild(entry);
+
+            while (this.statusLog.children.length > 8) {
+              this.statusLog.removeChild(this.statusLog.firstChild);
+            }
+          }
         }
       });
     </script>
@@ -130,6 +153,32 @@
         font-size: 14px;
         backdrop-filter: blur(6px);
       }
+
+      #debugPanel {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        background: rgba(0, 0, 0, 0.65);
+        color: #e2e8f0;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 12px;
+        max-width: 320px;
+        line-height: 1.4;
+        pointer-events: none;
+        backdrop-filter: blur(6px);
+      }
+
+      #statusLog {
+        margin: 8px 0 0;
+        padding-left: 16px;
+        max-height: 160px;
+        overflow: auto;
+      }
+
+      #statusLog li {
+        margin-bottom: 4px;
+      }
     </style>
   </head>
 
@@ -137,6 +186,12 @@
     <!-- AR-Overlay Hinweistext (UI bleibt auch im AR-Modus sichtbar dank dom-overlay) -->
     <div id="overlayUI">
       <div id="hint">Tippe unten rechts auf „AR“, um die Kamera zu starten.</div>
+    </div>
+
+    <div id="debugPanel">
+      <strong>AR Status:</strong>
+      <div id="status">Scene initialized</div>
+      <ul id="statusLog"></ul>
     </div>
 
     <!--
@@ -158,6 +213,8 @@
       cursor="rayOrigin: mouse"
       raycaster="objects: .clickable"
       ar-hints>
+      ar-hints
+      ar-debug>
 
       <!-- Beleuchtung (wirkt auf dein virtuelles UI-Panel) -->
       <a-entity light="type: hemisphere; intensity: 0.8; groundColor: #777"></a-entity>
@@ -182,64 +239,3 @@
           material="color: #00BCD4; opacity: 0.35">
         </a-cylinder>
       </a-entity>
-
-      <!--
-        Karte / Panel
-        - Start: unsichtbar
-        - Wird beim ersten Tap an die Reticle-Position gesetzt (place-once)
-      -->
-      <a-entity
-        id="card"
-        visible="false"
-        place-once="reticle: #reticle"
-        position="0 0 -0.5"
-        rotation="-90 0 0">
-
-        <!-- Hintergrundfläche der Karte -->
-        <a-plane
-          width="0.32"
-          height="0.18"
-          material="color: #ffffff; opacity: 0.98; metalness: 0; roughness: 1"
-          shadow="cast: true; receive: true">
-        </a-plane>
-
-        <!-- Titel -->
-        <a-text
-          value="Hello AR 👋"
-          align="center"
-          color="#111"
-          position="0 0.055 0.001"
-          width="0.5">
-        </a-text>
-
-        <!-- Untertitel -->
-        <a-text
-          value="Placed on your floor"
-          align="center"
-          color="#333"
-          position="0 0.02 0.001"
-          width="0.5">
-        </a-text>
-
-        <!-- Button (clickable) -->
-        <a-plane
-          class="clickable"
-          ui-button="label: Open"
-          position="0 -0.045 0.001"
-          width="0.18"
-          height="0.045"
-          material="color: #0ea5e9">
-
-          <a-text
-            value="Open"
-            align="center"
-            color="#fff"
-            width="0.4"
-            position="0 0 0.001">
-          </a-text>
-        </a-plane>
-      </a-entity>
-    </a-scene>
-  </body>
-</html>
-
