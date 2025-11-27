@@ -20,6 +20,7 @@
           this.hintEl = document.getElementById('hint');
           this.reticle = document.getElementById('reticle');
           this.card = document.getElementById('card');
+          this.hitStatusEl = document.getElementById('hitStatus');
           this.scene = this.el.sceneEl;
           this.scanInterval = null;
           this.rescanTimeout = null;
@@ -61,6 +62,12 @@
           this.hintEl.style.display = show ? 'block' : 'none';
         },
 
+        updateHitStatus(text, show = true) {
+          if (!this.hitStatusEl) return;
+          this.hitStatusEl.textContent = text;
+          this.hitStatusEl.style.display = show ? 'flex' : 'none';
+        },
+
         startScanningHint() {
           this.stopScanningHint();
           this.updateHint(
@@ -98,6 +105,7 @@
 
           this.startScanningHint();
           this.toggleReticle(false);
+          this.updateHitStatus('nichts gefunden');
         },
 
         onDoubleClick() {
@@ -115,6 +123,7 @@
           this.resetPlacement();
           this.startScanningHint();
           this.updateHint('Neuscan gestartet… suche erneut nach einer ebenen Fläche.');
+          this.updateHitStatus('nichts gefunden');
 
           this.scene.emit('ar-hit-test-start');
 
@@ -140,6 +149,7 @@
         onHitTestStart() {
           this.startScanningHint();
           this.toggleReticle(false);
+          this.updateHitStatus('nichts gefunden');
         },
 
         onHitTestAchieved() {
@@ -150,30 +160,35 @@
           this.updateHint(message);
           this.rescanPending = false;
           this.toggleReticle(true);
+          this.updateHitStatus('YES, hab etwas.');
         },
 
         onHitTestSelect() {
           this.stopScanningHint();
           this.updateHint('Karte platziert 🎉 Die Fläche bleibt verankert, bewege die Kamera ruhig weiter.');
           this.toggleReticle(false);
+          this.updateHitStatus('YES, hab etwas.');
         },
 
         onHitTestUnavailable() {
           this.stopScanningHint();
           this.updateHint('Hit-Test nicht verfügbar auf diesem Gerät/Browser. Prüfe WebXR- und Kamera-Support.');
           this.toggleReticle(false);
+          this.updateHitStatus('nichts gefunden');
         },
 
         onHitTestError() {
           this.stopScanningHint();
           this.updateHint('Hit-Test Fehler. Erlaube Kamera- und Bewegungssensoren und stelle ausreichende Beleuchtung sicher.');
           this.toggleReticle(false);
+          this.updateHitStatus('nichts gefunden');
         },
 
         onExitVR() {
           this.stopScanningHint();
           this.toggleReticle(false);
           this.updateHint('Tippe unten rechts auf „AR“, um die Kamera zu starten.', false);
+          this.updateHitStatus('nichts gefunden', false);
         }
       });
 
@@ -265,6 +280,28 @@
         color: #e2e8f0;
       }
 
+      /* Overlay oben für kompaktes Hit-Test-Feedback */
+      #hitStatusBar {
+        position: fixed;
+        top: 12px;
+        left: 0;
+        right: 0;
+        display: none;
+        justify-content: center;
+        pointer-events: none;
+      }
+
+      #hitStatus {
+        background: rgba(11, 23, 36, 0.8);
+        color: #e2e8f0;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-weight: 600;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        letter-spacing: 0.02em;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
       /* DOM-Overlay für Text-Hinweise */
       #overlayUI {
         position: fixed;
@@ -317,6 +354,10 @@
     </style>
   </head>
   <body>
+    <div id="hitStatusBar" aria-live="polite">
+      <div id="hitStatus">nichts gefunden</div>
+    </div>
+
     <div id="overlayUI" aria-live="polite">
       <div id="hint">Tippe unten rechts auf „AR“, um die Kamera zu starten.</div>
     </div>
