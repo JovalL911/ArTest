@@ -56,7 +56,6 @@
           this.card = document.getElementById('card');
           this.hitStatusBar = document.getElementById('hitStatusBar');
           this.hitStatusEl = document.getElementById('hitStatus');
-          this.hitDebug = document.getElementById('hitDebug');
           this.hitDebugStateEl = document.getElementById('hitDebugState');
           this.scene = this.el.sceneEl;
 
@@ -106,17 +105,16 @@
 
         // Debug-Zeile "Hit detection: ..."
         setHitDebugState(detected) {
-          if (!this.hitDebugStateEl || !this.hitDebug) return;
+          if (!this.hitDebugStateEl) return;
 
-          this.hitDebug.style.display = 'block';
           this.hitDebugStateEl.style.fontWeight = '700';
 
           if (detected) {
-            this.hitDebugStateEl.textContent = 'detected';
-            this.hitDebugStateEl.style.color = '#22c55e'; // grün
+            this.hitDebugStateEl.textContent = 'Hit detection: detected';
+            this.hitDebugStateEl.style.color = '#22c55e';
           } else {
-            this.hitDebugStateEl.textContent = 'not detected yet';
-            this.hitDebugStateEl.style.color = '#ef4444'; // rot
+            this.hitDebugStateEl.textContent = 'Hit detection: not detected yet';
+            this.hitDebugStateEl.style.color = '#ef4444';
           }
         },
 
@@ -239,10 +237,6 @@
           this.updateHint(HINT_MESSAGES.idle, false);
           this.updateHitStatus('nichts gefunden', false);
           this.setHitDebugState(false);
-
-          if (this.hitDebug) {
-            this.hitDebug.style.display = 'none';
-          }
         }
       });
 
@@ -366,26 +360,16 @@
         color: #e2e8f0;
       }
 
-      #hitDebug {
+      #overlayUI {
         position: fixed;
-        top: 8px;
-        left: 0;
-        right: 0;
-        display: block;
-        text-align: center;
-        font-size: 14px;
+        inset: 0;
         pointer-events: none;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-      }
-
-      #hitDebugState {
-        font-weight: 700;
-        color: #ef4444;
+        padding: 16px;
       }
 
       #hitStatusBar {
         position: fixed;
-        top: 40px;
+        top: 12px;
         left: 0;
         right: 0;
         display: none;
@@ -404,28 +388,33 @@
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
       }
 
-      #hitStatus {
+      #hitStatusLine {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         background: rgba(11, 23, 36, 0.8);
         color: #e2e8f0;
         padding: 8px 14px;
         border-radius: 999px;
-        font-weight: 600;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-        letter-spacing: 0.02em;
         border: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 13px;
       }
 
-      #overlayUI {
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        display: flex;
-        align-items: flex-end;
-        justify-content: center;
-        padding: 16px;
+      #hitDebugState {
+        font-weight: 700;
+      }
+
+      #hitStatus {
+        font-weight: 600;
+        letter-spacing: 0.02em;
       }
 
       #hint {
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
         pointer-events: none;
         background: rgba(0, 0, 0, 0.55);
         color: #fff;
@@ -467,26 +456,28 @@
   </head>
   <body>
     <div id="overlayUI" aria-live="polite">
-      <div id="hitDebug">
-        Hit detection: <span id="hitDebugState">not detected yet</span>
-      </div>
-
+      <!-- Status-Bar mit integriertem Debug -->
       <div id="hitStatusBar">
         <div id="hitStatusHint">
           Scanne weiter… halte die Kamera auf eine strukturierte Fläche.
         </div>
-        <div id="hitStatus">nichts gefunden</div>
+        <div id="hitStatusLine">
+          <span id="hitDebugState">Hit detection: not detected yet</span>
+          <span id="hitStatus">nichts gefunden</span>
+        </div>
       </div>
 
+      <!-- Hinweis unten -->
       <div id="hint">
         Tippe unten rechts auf „AR“, um die Kamera zu starten.
       </div>
-    </div>
 
-    <div id="debugPanel">
-      <strong>AR Status:</strong>
-      <div id="status">Scene initialized</div>
-      <ul id="statusLog"></ul>
+      <!-- Debug-Panel in das Overlay verschieben -->
+      <div id="debugPanel">
+        <strong>AR Status:</strong>
+        <div id="status">Scene initialized</div>
+        <ul id="statusLog"></ul>
+      </div>
     </div>
 
     <a-scene
