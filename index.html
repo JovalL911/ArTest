@@ -8,12 +8,12 @@
     <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
 
     <script>
+      // WebXR / AR Support-Check
       async function checkARSupport() {
         try {
           if (!('xr' in navigator) || typeof navigator.xr.isSessionSupported !== 'function') {
             return false;
           }
-
           const supported = await navigator.xr.isSessionSupported('immersive-ar');
           return Boolean(supported);
         } catch (error) {
@@ -37,12 +37,14 @@
           'Neuscan erfolgreich ✅ Tippe auf den Bildschirm, um die Karte neu zu platzieren.',
         placed:
           'Karte platziert 🎉 Die Fläche bleibt verankert, bewege die Kamera ruhig weiter.',
-        unavailable: 'Hit-Test nicht verfügbar auf diesem Gerät/Browser. Prüfe WebXR- und Kamera-Support.',
+        unavailable:
+          'Hit-Test nicht verfügbar auf diesem Gerät/Browser. Prüfe WebXR- und Kamera-Support.',
         error:
           'Hit-Test Fehler. Erlaube Kamera- und Bewegungssensoren und stelle ausreichende Beleuchtung sicher.',
         idle: 'Tippe unten rechts auf „AR“, um die Kamera zu starten.'
       };
 
+      // UI / Hint-Logik
       AFRAME.registerComponent('ar-hints', {
         init() {
           this.hintEl = document.getElementById('hint');
@@ -53,6 +55,7 @@
           this.hitDebug = document.getElementById('hitDebug');
           this.hitDebugStateEl = document.getElementById('hitDebugState');
           this.scene = this.el.sceneEl;
+
           this.scanInterval = null;
           this.rescanTimeout = null;
           this.rescanPending = false;
@@ -70,6 +73,7 @@
           Object.entries(this.events).forEach(([event, handler]) => {
             this.scene.addEventListener(event, handler);
           });
+
           this.onDoubleClick = this.onDoubleClick.bind(this);
           document.addEventListener('dblclick', this.onDoubleClick);
 
@@ -96,19 +100,19 @@
           this.hitStatusEl.style.display = show ? 'flex' : 'none';
         },
 
+        // Debug-Zeile "Hit detection: ..."
         setHitDebugState(detected) {
           if (!this.hitDebugStateEl || !this.hitDebug) return;
 
-          // Always show the debug bar when this is called
           this.hitDebug.style.display = 'block';
           this.hitDebugStateEl.style.fontWeight = '700';
 
           if (detected) {
             this.hitDebugStateEl.textContent = 'detected';
-            this.hitDebugStateEl.style.color = '#22c55e'; // green
+            this.hitDebugStateEl.style.color = '#22c55e'; // grün
           } else {
             this.hitDebugStateEl.textContent = 'not detected yet';
-            this.hitDebugStateEl.style.color = '#ef4444'; // red
+            this.hitDebugStateEl.style.color = '#ef4444'; // rot
           }
         },
 
@@ -146,11 +150,11 @@
         },
 
         onDoubleClick() {
+          // Optional: nur im XR-Mode neu scannen
           if (!this.el.sceneEl.is('vr-mode')) {
             this.updateHint(HINT_MESSAGES.promptStart);
             return;
           }
-
           this.restartScan();
         },
 
@@ -238,12 +242,7 @@
         }
       });
 
-      /**
-       * place-once
-       * - Wartet auf das erste ar-hit-test-select Event (Tap in AR)
-       * - Setzt die Karte auf die Position des Reticles
-       * - Schaltet den Hit-Test danach ab (Objekt bleibt "verankert")
-       */
+      // Einmaliges Platzieren der "Karte"
       AFRAME.registerComponent('place-once', {
         schema: { reticle: { type: 'selector' } },
 
@@ -261,7 +260,6 @@
           const reticle = this.data.reticle;
           if (this.placed || !reticle || !reticle.object3D.visible) return;
 
-          // Position und Rotation der Karte auf die des Reticles setzen
           this.el.object3D.position.copy(reticle.object3D.position);
           this.el.object3D.quaternion.copy(reticle.object3D.quaternion);
           this.el.setAttribute('visible', true);
@@ -271,11 +269,7 @@
         }
       });
 
-      /**
-       * ar-debug
-       * - Protokolliert wichtige AR- und Hit-Test-Ereignisse
-       * - Schreibt in die Konsole und in das Debug-Panel unten links
-       */
+      // Debug-Komponente
       AFRAME.registerComponent('ar-debug', {
         init() {
           this.statusEl = document.getElementById('status');
@@ -290,8 +284,9 @@
             ['ar-hit-test-achieved', 'Surface found'],
             ['ar-hit-test-select', 'Placement tap received'],
             ['ar-hit-test-error', 'Hit-test error: check console'],
-            ['ar-hit-test-unavailable', 'Hit-test unavailable on device'],
+            ['ar-hit-test-unavailable', 'Hit-test unavailable on device']
           ];
+
           events.forEach(([event, message]) => {
             scene.addEventListener(event, () => this.log(message));
           });
@@ -318,11 +313,11 @@
           if (this.statusEl) {
             this.statusEl.textContent = `${this.timestamp()} — ${message}`;
           }
-
           this.appendLog(message);
         }
       });
 
+      // Aufruf des Support-Checks & ggf. AR-Button deaktivieren
       document.addEventListener('DOMContentLoaded', () => {
         const hintEl = document.getElementById('hint');
         const scene = document.querySelector('a-scene');
@@ -384,7 +379,6 @@
         color: #ef4444;
       }
 
-      /* Overlay oben für kompaktes Hit-Test-Feedback */
       #hitStatusBar {
         position: fixed;
         top: 40px;
@@ -417,7 +411,6 @@
         border: 1px solid rgba(255, 255, 255, 0.08);
       }
 
-      /* DOM-Overlay für Text-Hinweise */
       #overlayUI {
         position: fixed;
         inset: 0;
@@ -474,8 +467,10 @@
         Hit detection: <span id="hitDebugState">not detected yet</span>
       </div>
 
-      <div id="hitStatusBar" aria-live="polite">
-        <div id="hitStatusHint">Scanne weiter… halte die Kamera auf eine strukturierte Fläche.</div>
+      <div id="hitStatusBar">
+        <div id="hitStatusHint">
+          Scanne weiter… halte die Kamera auf eine strukturierte Fläche.
+        </div>
         <div id="hitStatus">nichts gefunden</div>
       </div>
 
@@ -490,13 +485,6 @@
       <ul id="statusLog"></ul>
     </div>
 
-    <!--
-      A-Frame AR Szene
-      - webxr: aktiviert AR-Modus + Hit-Test + DOM Overlay
-      - xr-mode-ui: zeigt explizit nur den AR-Button an
-      - ar-hit-test: aktualisiert das Reticle (target:#reticle) bei erkannter Fläche
-      - cursor + raycaster: erlauben Screen-Tap-Interaktion mit .clickable
-    -->
     <a-scene
       renderer="colorManagement: true; physicallyCorrectLights: true"
       webxr="mode: ar;
@@ -507,35 +495,30 @@
       xr-mode-ui="XRMode: ar; enterAREnabled: true"
       ar-hit-test="target: #reticle; type: transient"
       cursor="rayOrigin: mouse"
-      raycaster="objects: .clickable" 
+      raycaster="objects: .clickable"
       ar-hints
-      ar-debug>
-
-      <!-- Beleuchtung (wirkt auf dein virtuelles UI-Panel) -->
+      ar-debug
+    >
       <a-entity light="type: hemisphere; intensity: 0.8; groundColor: #777"></a-entity>
       <a-entity light="type: directional; intensity: 0.6" position="0 3 1"></a-entity>
 
-      <!-- Kamera in AR (keine Controls nötig, die Pose kommt von WebXR) -->
       <a-entity camera look-controls="enabled: false"></a-entity>
 
-      <!-- Reticle, das vom ar-hit-test Component positioniert wird -->
       <a-entity id="reticle" visible="false">
         <a-ring
           radius-inner="0.45"
           radius-outer="0.50"
           rotation="-90 0 0"
-          material="color: #00bcd4; opacity: 0.95">
-        </a-ring>
-
+          material="color: #00bcd4; opacity: 0.95"
+        ></a-ring>
         <a-cylinder
           height="0.01"
           radius="0.40"
           rotation="-90 0 0"
-          material="color: #00bcd4; opacity: 0.35">
-        </a-cylinder>
+          material="color: #00bcd4; opacity: 0.35"
+        ></a-cylinder>
       </a-entity>
 
-      <!-- Deine "Karte" als leichtes UI-Panel -->
       <a-entity
         id="card"
         class="clickable"
@@ -544,14 +527,14 @@
         material="color: #0ea5e9; opacity: 0.92; roughness: 0.35; metalness: 0.1"
         text="value: AR Surface Demo; align: center; width: 1.5; color: #e0f2fe; wrapCount: 18"
         position="0 -10 0"
-        place-once="reticle: #reticle">
+        place-once="reticle: #reticle"
+      >
         <a-entity
           geometry="primitive: plane; width: 0.5; height: 0.28"
           material="color: #020617; opacity: 0.6"
-          position="0 0 0.001">
-        </a-entity>
+          position="0 0 0.001"
+        ></a-entity>
       </a-entity>
-
     </a-scene>
   </body>
 </html>
