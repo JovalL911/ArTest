@@ -289,8 +289,19 @@
         left: 0;
         right: 0;
         display: none;
+        flex-direction: column;
+        align-items: center;
         justify-content: center;
+        gap: 4px;
         pointer-events: none;
+      }
+
+      #hitStatusHint {
+        color: #ff6961;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
       }
 
       #hitStatus {
@@ -357,6 +368,7 @@
   </head>
   <body>
     <div id="hitStatusBar" aria-live="polite">
+      <div id="hitStatusHint">Scanne weiter… halte die Kamera auf eine strukturierte Fläche.</div>
       <div id="hitStatus">nichts gefunden</div>
     </div>
 
