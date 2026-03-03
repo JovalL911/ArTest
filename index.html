@@ -1,535 +1,595 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="de">
   <head>
-    <meta charset="utf-8" />
-    <title>A-Frame AR — Floor Place Rectangle</title>
+    <meta charset="UTF-8" />
     <meta
-      name="description"
-      content="WebXR hit-test demo for placing a rectangular card on detected surfaces in AR"
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
-
-    <script>
-      // WebXR / AR Support-Check
-      async function checkARSupport() {
-        try {
-          if (!('xr' in navigator) || typeof navigator.xr.isSessionSupported !== 'function') {
-            return false;
-          }
-          const supported = await navigator.xr.isSessionSupported('immersive-ar');
-          return Boolean(supported);
-        } catch (error) {
-          console.warn('AR support check failed', error);
-          return false;
-        }
-      }
-
-      const HINT_MESSAGES = {
-        start:
-          'AR gestartet – suche eine ebene, gut beleuchtete Fläche. Bewege das Gerät langsam in einer „8“, bis ein blaues Ziel auftaucht.',
-        keepScanning:
-          'Scanne weiter… halte die Kamera auf eine strukturierte Fläche (Tisch, Boden) gerichtet und bewege dich leicht, bis das Ziel erscheint.',
-        promptStart: 'AR noch nicht aktiv – tippe unten rechts auf „AR“, um zu starten.',
-        rescan: 'Neuscan gestartet… suche erneut nach einer ebenen Fläche.',
-        rescanFail:
-          'Keine neue Fläche gefunden. Bewege die Kamera leicht und stelle sicher, dass der Bereich gut beleuchtet ist.',
-        found:
-          'Fläche erkannt ✅ Tippe auf den Bildschirm, um die Karte dort abzulegen.',
-        foundRescan:
-          'Neuscan erfolgreich ✅ Tippe auf den Bildschirm, um die Karte neu zu platzieren.',
-        placed:
-          'Karte platziert 🎉 Die Fläche bleibt verankert, bewege die Kamera ruhig weiter.',
-        unavailable:
-          'Hit-Test nicht verfügbar auf diesem Gerät/Browser. Prüfe WebXR- und Kamera-Support.',
-        error:
-          'Hit-Test Fehler. Erlaube Kamera- und Bewegungssensoren und stelle ausreichende Beleuchtung sicher.',
-        idle: 'Tippe unten rechts auf „AR“, um die Kamera zu starten.'
-      };
-
-      // UI / Hint-Logik
-      AFRAME.registerComponent('ar-hints', {
-        init() {
-          this.hintEl = document.getElementById('hint');
-          this.reticle = document.getElementById('reticle');
-          this.card = document.getElementById('card');
-          this.hitStatusBar = document.getElementById('hitStatusBar');
-          this.hitStatusEl = document.getElementById('hitStatus');
-          this.hitDebugStateEl = document.getElementById('hitDebugState');
-          this.scene = this.el.sceneEl;
-
-          this.scanInterval = null;
-          this.rescanTimeout = null;
-          this.rescanPending = false;
-
-          this.events = {
-            'enter-vr': this.onEnterVR.bind(this),
-            'ar-hit-test-start': this.onHitTestStart.bind(this),
-            'ar-hit-test-achieved': this.onHitTestAchieved.bind(this),
-            'ar-hit-test-select': this.onHitTestSelect.bind(this),
-            'ar-hit-test-unavailable': this.onHitTestUnavailable.bind(this),
-            'ar-hit-test-error': this.onHitTestError.bind(this),
-            'exit-vr': this.onExitVR.bind(this)
-          };
-
-          Object.entries(this.events).forEach(([event, handler]) => {
-            this.scene.addEventListener(event, handler);
-          });
-
-          this.onDoubleClick = this.onDoubleClick.bind(this);
-          document.addEventListener('dblclick', this.onDoubleClick);
-
-          this.setHitDebugState(false);
-        },
-
-        remove() {
-          Object.entries(this.events).forEach(([event, handler]) => {
-            this.scene.removeEventListener(event, handler);
-          });
-          document.removeEventListener('dblclick', this.onDoubleClick);
-        },
-
-        updateHint(text, show = true) {
-          if (!this.hintEl) return;
-          this.hintEl.textContent = text;
-          this.hintEl.style.display = show ? 'block' : 'none';
-        },
-
-        updateHitStatus(text, show = true) {
-          if (!this.hitStatusEl || !this.hitStatusBar) return;
-          this.hitStatusEl.textContent = text;
-          this.hitStatusBar.style.display = show ? 'flex' : 'none';
-          this.hitStatusEl.style.display = show ? 'flex' : 'none';
-        },
-
-        // Debug-Zeile "Hit detection: ..."
-        setHitDebugState(detected) {
-          if (!this.hitDebugStateEl) return;
-
-          this.hitDebugStateEl.style.fontWeight = '700';
-
-          if (detected) {
-            this.hitDebugStateEl.textContent = 'Hit detection: detected';
-            this.hitDebugStateEl.style.color = '#22c55e';
-          } else {
-            this.hitDebugStateEl.textContent = 'Hit detection: not detected yet';
-            this.hitDebugStateEl.style.color = '#ef4444';
-          }
-        },
-
-        startScanningHint() {
-          this.stopScanningHint();
-          this.updateHint(HINT_MESSAGES.start);
-          this.scanInterval = setInterval(() => {
-            this.updateHint(HINT_MESSAGES.keepScanning);
-          }, 4500);
-        },
-
-        stopScanningHint() {
-          if (this.scanInterval) {
-            clearInterval(this.scanInterval);
-            this.scanInterval = null;
-          }
-          if (this.rescanTimeout) {
-            clearTimeout(this.rescanTimeout);
-            this.rescanTimeout = null;
-          }
-          this.rescanPending = false;
-        },
-
-        toggleReticle(visible) {
-          if (this.reticle) {
-            this.reticle.setAttribute('visible', visible);
-          }
-        },
-
-        onEnterVR() {
-          this.startScanningHint();
-          this.toggleReticle(false);
-          this.updateHitStatus('nichts gefunden');
-          this.setHitDebugState(false);
-        },
-
-        onDoubleClick() {
-          // Optional: nur im XR-Mode neu scannen
-          if (!this.el.sceneEl.is('vr-mode')) {
-            this.updateHint(HINT_MESSAGES.promptStart);
-            return;
-          }
-          this.restartScan();
-        },
-
-        restartScan() {
-          this.rescanPending = true;
-          this.toggleReticle(false);
-          this.resetPlacement();
-          this.startScanningHint();
-          this.updateHint(HINT_MESSAGES.rescan);
-          this.updateHitStatus('nichts gefunden');
-          this.setHitDebugState(false);
-
-          this.scene.emit('ar-hit-test-start');
-
-          this.rescanTimeout = setTimeout(() => {
-            if (!this.rescanPending) return;
-            this.updateHint(HINT_MESSAGES.rescanFail);
-            this.rescanPending = false;
-          }, 8000);
-        },
-
-        resetPlacement() {
-          if (!this.card) return;
-          this.card.setAttribute('visible', false);
-
-          const placeOnce = this.card.components['place-once'];
-          if (placeOnce) {
-            placeOnce.placed = false;
-          }
-        },
-
-        onHitTestStart() {
-          this.startScanningHint();
-          this.toggleReticle(false);
-          this.updateHitStatus('nichts gefunden');
-          this.setHitDebugState(false);
-        },
-
-        onHitTestAchieved() {
-          this.stopScanningHint();
-          const message = this.rescanPending
-            ? HINT_MESSAGES.foundRescan
-            : HINT_MESSAGES.found;
-          this.updateHint(message);
-          this.rescanPending = false;
-          this.toggleReticle(true);
-          this.updateHitStatus('YES, hab etwas.');
-          this.setHitDebugState(true);
-        },
-
-        onHitTestSelect() {
-          this.stopScanningHint();
-          this.updateHint(HINT_MESSAGES.placed);
-          this.toggleReticle(false);
-          this.updateHitStatus('YES, hab etwas.');
-          this.setHitDebugState(true);
-        },
-
-        onHitTestUnavailable() {
-          this.stopScanningHint();
-          this.updateHint(HINT_MESSAGES.unavailable);
-          this.toggleReticle(false);
-          this.updateHitStatus('nichts gefunden');
-          this.setHitDebugState(false);
-        },
-
-        onHitTestError() {
-          this.stopScanningHint();
-          this.updateHint(HINT_MESSAGES.error);
-          this.toggleReticle(false);
-          this.updateHitStatus('nichts gefunden');
-          this.setHitDebugState(false);
-        },
-
-        onExitVR() {
-          this.stopScanningHint();
-          this.toggleReticle(false);
-          this.updateHint(HINT_MESSAGES.idle, false);
-          this.updateHitStatus('nichts gefunden', false);
-          this.setHitDebugState(false);
-        }
-      });
-
-      // Einmaliges Platzieren der "Karte"
-      AFRAME.registerComponent('place-once', {
-        schema: { reticle: { type: 'selector' } },
-
-        init() {
-          this.placed = false;
-          this.onSelect = this.onSelect.bind(this);
-          this.el.sceneEl.addEventListener('ar-hit-test-select', this.onSelect);
-        },
-
-        remove() {
-          this.el.sceneEl.removeEventListener('ar-hit-test-select', this.onSelect);
-        },
-
-        onSelect() {
-          const reticle = this.data.reticle;
-          if (this.placed || !reticle || !reticle.object3D.visible) return;
-
-          this.el.object3D.position.copy(reticle.object3D.position);
-          this.el.object3D.quaternion.copy(reticle.object3D.quaternion);
-          this.el.setAttribute('visible', true);
-
-          this.placed = true;
-          reticle.setAttribute('visible', false);
-        }
-      });
-
-      // Debug-Komponente
-      AFRAME.registerComponent('ar-debug', {
-        init() {
-          this.statusEl = document.getElementById('status');
-          this.statusLog = document.getElementById('statusLog');
-          this.log('Scene initialized, waiting for AR session…');
-
-          const scene = this.el.sceneEl;
-          const events = [
-            ['enter-vr', 'XR session started'],
-            ['exit-vr', 'XR session ended'],
-            ['ar-hit-test-start', 'Hit-test started'],
-            ['ar-hit-test-achieved', 'Surface found'],
-            ['ar-hit-test-select', 'Placement tap received'],
-            ['ar-hit-test-error', 'Hit-test error: check console'],
-            ['ar-hit-test-unavailable', 'Hit-test unavailable on device']
-          ];
-
-          events.forEach(([event, message]) => {
-            scene.addEventListener(event, () => this.log(message));
-          });
-        },
-
-        timestamp() {
-          return new Date().toLocaleTimeString();
-        },
-
-        appendLog(message) {
-          if (!this.statusLog) return;
-
-          const entry = document.createElement('li');
-          entry.textContent = `${this.timestamp()} — ${message}`;
-          this.statusLog.appendChild(entry);
-
-          while (this.statusLog.children.length > 8) {
-            this.statusLog.removeChild(this.statusLog.firstChild);
-          }
-        },
-
-        log(message) {
-          console.info(`[AR DEBUG] ${message}`);
-          if (this.statusEl) {
-            this.statusEl.textContent = `${this.timestamp()} — ${message}`;
-          }
-          this.appendLog(message);
-        }
-      });
-
-      // Aufruf des Support-Checks & ggf. AR-Button deaktivieren
-      document.addEventListener('DOMContentLoaded', () => {
-        const hintEl = document.getElementById('hint');
-        const scene = document.querySelector('a-scene');
-
-        checkARSupport().then((supported) => {
-          if (supported) return;
-
-          if (hintEl) {
-            hintEl.textContent =
-              'AR / WebXR Hit-Test wird auf diesem Gerät/Browser nicht unterstützt.';
-          }
-
-          let attempts = 0;
-          const disableXRButton = () => {
-            const xrButtons = document.querySelectorAll('.a-enter-vr, .a-enter-ar');
-            if (!xrButtons.length && attempts < 120) {
-              attempts += 1;
-              requestAnimationFrame(disableXRButton);
-              return;
-            }
-
-            xrButtons.forEach((btn) => {
-              btn.style.display = 'none';
-              btn.setAttribute('disabled', 'true');
-            });
-          };
-
-          disableXRButton();
-
-          if (scene) {
-            scene.setAttribute('xr-mode-ui', 'XRMode: ar; enterAREnabled: false');
-          }
-        });
-      });
-    </script>
-
+    <title>AR Surface Demo</title>
     <style>
-      body {
+      * {
         margin: 0;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-        background: #0b1724;
-        color: #e2e8f0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        background: #111;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #fff;
+        height: 100vh;
+        width: 100vw;
       }
 
-      #overlayUI {
+      /* ---- camera bg ---- */
+      #cam-bg {
         position: fixed;
         inset: 0;
+        z-index: 0;
+        background: radial-gradient(
+          ellipse at 30% 40%,
+          #1a2a1a 0%,
+          #0d1a0d 60%,
+          #050d05 100%
+        );
+      }
+      #cam-video {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 1;
+        display: none;
+      }
+      #cam-noise {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        opacity: 0.03;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
         pointer-events: none;
-        padding: 16px;
       }
 
-      #hitStatusBar {
+      /* ---- scan grid overlay ---- */
+      #scan-grid {
         position: fixed;
-        top: 12px;
+        inset: 0;
+        z-index: 3;
+        pointer-events: none;
+        background-image: linear-gradient(
+            rgba(0, 255, 100, 0.04) 1px,
+            transparent 1px
+          ),
+          linear-gradient(90deg, rgba(0, 255, 100, 0.04) 1px, transparent 1px);
+        background-size: 40px 40px;
+        animation: gridMove 8s linear infinite;
+      }
+      @keyframes gridMove {
+        from {
+          background-position: 0 0;
+        }
+        to {
+          background-position: 40px 40px;
+        }
+      }
+
+      /* ---- A-Frame canvas ---- */
+      #scene-wrap {
+        position: fixed;
+        inset: 0;
+        z-index: 4;
+      }
+      a-scene {
+        width: 100vw !important;
+        height: 100vh !important;
+      }
+
+      /* ---- UI layer ---- */
+      #ui {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+      }
+
+      #title-bar {
+        position: absolute;
+        top: 0;
         left: 0;
         right: 0;
-        display: none;
+        padding: 18px 20px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent);
+      }
+      #title-bar .logo {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.9);
+      }
+      #title-bar .badge {
+        font-size: 11px;
+        background: rgba(0, 255, 100, 0.15);
+        border: 1px solid rgba(0, 255, 100, 0.4);
+        color: #0f0;
+        padding: 4px 10px;
+        border-radius: 20px;
+      }
+
+      /* scanning animation */
+      #scan-ring {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -60%);
+        width: 180px;
+        height: 180px;
+      }
+      .ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 2px solid rgba(0, 255, 100, 0.5);
+        animation: ringPulse 2s ease-out infinite;
+      }
+      .ring:nth-child(2) {
+        animation-delay: 0.5s;
+        border-color: rgba(0, 200, 255, 0.4);
+      }
+      .ring:nth-child(3) {
+        animation-delay: 1s;
+        border-color: rgba(0, 255, 100, 0.2);
+      }
+      @keyframes ringPulse {
+        0% {
+          transform: scale(0.6);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(1.4);
+          opacity: 0;
+        }
+      }
+      .cross {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 30px;
+        height: 30px;
+      }
+      .cross::before {
+        content: "";
+        position: absolute;
+        width: 2px;
+        height: 100%;
+        background: #0f0;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .cross::after {
+        content: "";
+        position: absolute;
+        height: 2px;
+        width: 100%;
+        background: #0f0;
+        top: 50%;
+        left: 0;
+        transform: translateY(-50%);
+      }
+
+      /* surface indicator */
+      #surface-dots {
+        position: absolute;
+        bottom: 42%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        opacity: 0;
+        transition: opacity 0.5s;
+      }
+      #surface-dots.visible {
+        opacity: 1;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #0f0;
+        animation: dotBlink 1.5s infinite;
+      }
+      .dot:nth-child(2) {
+        animation-delay: 0.3s;
+      }
+      .dot:nth-child(3) {
+        animation-delay: 0.6s;
+      }
+      @keyframes dotBlink {
+        0%,
+        100% {
+          opacity: 0.3;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      /* status bar */
+      #status {
+        position: absolute;
+        bottom: 160px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        padding: 10px 20px;
+        border-radius: 25px;
+        font-size: 14px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        white-space: nowrap;
+        max-width: 90vw;
+        text-align: center;
+        transition: all 0.3s;
+      }
+      #status.found {
+        border-color: rgba(0, 255, 100, 0.5);
+        color: #0f0;
+        background: rgba(0, 30, 0, 0.7);
+      }
+
+      /* buttons */
+      #btn-area {
+        position: absolute;
+        bottom: 60px;
+        left: 0;
+        right: 0;
+        display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        gap: 4px;
-        pointer-events: none;
+        gap: 12px;
+        pointer-events: all;
       }
-
-      #hitStatusHint {
-        color: #ff6961;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.02em;
-        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+      #place-btn {
+        background: linear-gradient(135deg, #00c9ff, #92fe9d);
+        color: #000;
+        font-weight: 800;
+        font-size: 16px;
+        border: none;
+        padding: 18px 44px;
+        border-radius: 50px;
+        cursor: pointer;
+        box-shadow: 0 0 30px rgba(0, 201, 255, 0.5),
+          0 4px 15px rgba(0, 0, 0, 0.3);
+        transform: scale(0);
+        transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        letter-spacing: 0.5px;
       }
-
-      #hitStatusLine {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: rgba(11, 23, 36, 0.8);
-        color: #e2e8f0;
-        padding: 8px 14px;
-        border-radius: 999px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+      #place-btn.visible {
+        transform: scale(1);
+      }
+      #place-btn:active {
+        transform: scale(0.95);
+      }
+      #clear-btn {
+        background: transparent;
+        color: rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 8px 20px;
+        border-radius: 20px;
         font-size: 13px;
+        cursor: pointer;
+        display: none;
       }
 
-      #hitDebugState {
-        font-weight: 700;
+      /* object counter */
+      #counter {
+        position: absolute;
+        top: 70px;
+        right: 16px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 13px;
+        backdrop-filter: blur(6px);
+        display: none;
       }
 
-      #hitStatus {
-        font-weight: 600;
-        letter-spacing: 0.02em;
-      }
-
-      #hint {
-        position: fixed;
+      /* cam permission button */
+      #cam-btn {
+        position: absolute;
+        top: 50%;
         left: 50%;
-        bottom: 16px;
-        transform: translateX(-50%);
-        pointer-events: none;
-        background: rgba(0, 0, 0, 0.55);
+        transform: translate(-50%, -50%);
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.2);
         color: #fff;
-        padding: 10px 14px;
-        border-radius: 12px;
-        font-size: 14px;
-        backdrop-filter: blur(6px);
-        max-width: min(480px, 90vw);
-        text-align: center;
-        line-height: 1.45;
+        padding: 14px 28px;
+        border-radius: 30px;
+        font-size: 15px;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        pointer-events: all;
+        display: none;
       }
 
-      #debugPanel {
+      /* placed object flash */
+      #flash {
         position: fixed;
-        left: 12px;
-        bottom: 12px;
-        background: rgba(0, 0, 0, 0.65);
-        color: #e2e8f0;
-        padding: 10px 12px;
-        border-radius: 10px;
-        font-size: 12px;
-        max-width: 320px;
-        line-height: 1.4;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.15);
+        z-index: 20;
+        opacity: 0;
         pointer-events: none;
-        backdrop-filter: blur(6px);
-      }
-
-      #statusLog {
-        margin: 8px 0 0;
-        padding-left: 16px;
-        max-height: 160px;
-        overflow: auto;
-      }
-
-      #statusLog li {
-        margin-bottom: 4px;
+        transition: opacity 0.1s;
       }
     </style>
   </head>
   <body>
-    <div id="overlayUI" aria-live="polite">
-      <!-- Status-Bar mit integriertem Debug -->
-      <div id="hitStatusBar">
-        <div id="hitStatusHint">
-          Scanne weiter… halte die Kamera auf eine strukturierte Fläche.
-        </div>
-        <div id="hitStatusLine">
-          <span id="hitDebugState">Hit detection: not detected yet</span>
-          <span id="hitStatus">nichts gefunden</span>
-        </div>
-      </div>
+    <div id="cam-bg"></div>
+    <video id="cam-video" autoplay playsinline muted></video>
+    <div id="cam-noise"></div>
+    <div id="scan-grid"></div>
 
-      <!-- Hinweis unten -->
-      <div id="hint">
-        Tippe unten rechts auf „AR“, um die Kamera zu starten.
-      </div>
+    <div id="scene-wrap">
+      <a-scene
+        id="main-scene"
+        embedded
+        vr-mode-ui="enabled:false"
+        renderer="alpha:true;antialias:true;logarithmicDepthBuffer:true"
+        background="transparent:true"
+        fog="type:linear;color:#000;near:5;far:20"
+      >
+        <a-entity id="objects-root"></a-entity>
 
-      <!-- Debug-Panel in das Overlay verschieben -->
-      <div id="debugPanel">
-        <strong>AR Status:</strong>
-        <div id="status">Scene initialized</div>
-        <ul id="statusLog"></ul>
-      </div>
+        <a-light type="ambient" intensity="0.7" color="#ffffff"></a-light>
+        <a-light
+          type="directional"
+          position="2 4 3"
+          intensity="1.0"
+          color="#ffffff"
+          castShadow="true"
+        ></a-light>
+        <a-light
+          type="point"
+          position="-2 2 -2"
+          intensity="0.4"
+          color="#00aaff"
+        ></a-light>
+
+        <a-camera
+          id="cam-entity"
+          position="0 1.6 0"
+          look-controls="enabled:true;magicWindowTrackingEnabled:true;reverseMouseDrag:false"
+          wasd-controls="enabled:false"
+        >
+        </a-camera>
+      </a-scene>
     </div>
 
-    <a-scene
-      renderer="colorManagement: true; physicallyCorrectLights: true"
-      webxr="mode: ar;
-             referenceSpaceType: local;
-             requiredFeatures: hit-test;
-             optionalFeatures: dom-overlay;
-             overlayElement: #overlayUI"
-      xr-mode-ui="XRMode: ar; enterAREnabled: true"
-      ar-hit-test="target: #reticle; type: transient"
-      cursor="rayOrigin: mouse"
-      raycaster="objects: .clickable"
-      ar-hints
-      ar-debug
-    >
-      <a-entity light="type: hemisphere; intensity: 0.8; groundColor: #777"></a-entity>
-      <a-entity light="type: directional; intensity: 0.6" position="0 3 1"></a-entity>
+    <div id="ui">
+      <div id="title-bar">
+        <span class="logo">🔍 AR Surface</span>
+        <span class="badge" id="mode-badge">DEMO</span>
+      </div>
 
-      <a-entity camera look-controls="enabled: false"></a-entity>
+      <div id="scan-ring">
+        <div class="ring"></div>
+        <div class="ring"></div>
+        <div class="ring"></div>
+        <div class="cross"></div>
+      </div>
 
-      <a-entity id="reticle" visible="false">
-        <a-ring
-          radius-inner="0.45"
-          radius-outer="0.50"
-          rotation="-90 0 0"
-          material="color: #00bcd4; opacity: 0.95"
-        ></a-ring>
-        <a-cylinder
-          height="0.01"
-          radius="0.40"
-          rotation="-90 0 0"
-          material="color: #00bcd4; opacity: 0.35"
-        ></a-cylinder>
-      </a-entity>
+      <div id="surface-dots">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
 
-      <a-entity
-        id="card"
-        class="clickable"
-        visible="false"
-        geometry="primitive: plane; width: 0.55; height: 0.32"
-        material="color: #0ea5e9; opacity: 0.92; roughness: 0.35; metalness: 0.1"
-        text="value: AR Surface Demo; align: center; width: 1.5; color: #e0f2fe; wrapCount: 18"
-        position="0 -10 0"
-        place-once="reticle: #reticle"
-      >
-        <a-entity
-          geometry="primitive: plane; width: 0.5; height: 0.28"
-          material="color: #020617; opacity: 0.6"
-          position="0 0 0.001"
-        ></a-entity>
-      </a-entity>
-    </a-scene>
+      <div id="status">📷 Starte Kamera…</div>
+      <div id="counter"></div>
+
+      <button id="cam-btn" onclick="requestCamera()">
+        📷 Kamera aktivieren
+      </button>
+
+      <div id="btn-area">
+        <button id="place-btn" onclick="placeObject()">
+          ✦ Objekt platzieren
+        </button>
+        <button id="clear-btn" onclick="clearAll()">✕ Alle löschen</button>
+      </div>
+    </div>
+    <div id="flash"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.5.0/aframe.min.js"></script>
+    <script>
+      const SHAPES = ["box", "sphere", "cylinder", "cone", "torus"];
+      const COLORS = [
+        "#FF6B6B",
+        "#4ECDC4",
+        "#45B7D1",
+        "#F7DC6F",
+        "#BB8FCE",
+        "#52BE80",
+        "#F0B27A",
+        "#FF8C69",
+      ];
+      let count = 0;
+      let surfaceFound = false;
+      let scanTimer;
+
+      const root = document.getElementById("objects-root");
+      const statusEl = document.getElementById("status");
+      const placeBtn = document.getElementById("place-btn");
+      const clearBtn = document.getElementById("clear-btn");
+      const counterEl = document.getElementById("counter");
+      const surfaceDots = document.getElementById("surface-dots");
+      const flashEl = document.getElementById("flash");
+
+      function setStatus(msg, found = false) {
+        statusEl.textContent = msg;
+        statusEl.className = found ? "found" : "";
+      }
+
+      // ---- Camera access ----
+      async function startCamera() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "environment",
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          });
+          const video = document.getElementById("cam-video");
+          video.srcObject = stream;
+          video.style.display = "block";
+          document.getElementById("cam-bg").style.display = "none";
+          setStatus("🔍 Kamera aktiv — Oberfläche wird gescannt…");
+          startScanSimulation();
+        } catch (e) {
+          // fallback: show demo mode
+          setStatus("Demo-Modus (kein Kamerazugriff)");
+          startScanSimulation();
+        }
+      }
+
+      function requestCamera() {
+        document.getElementById("cam-btn").style.display = "none";
+        startCamera();
+      }
+
+      // ---- Simulate surface detection ----
+      function startScanSimulation() {
+        setStatus("🔍 Scanne Oberfläche…");
+        let progress = 0;
+        scanTimer = setInterval(() => {
+          progress++;
+          if (progress === 2) setStatus("🔍 Analysiere Tiefe…");
+          if (progress === 4) setStatus("🟡 Mögliche Fläche gefunden…");
+          if (progress >= 6) {
+            clearInterval(scanTimer);
+            onSurfaceFound();
+          }
+        }, 600);
+      }
+
+      function onSurfaceFound() {
+        surfaceFound = true;
+        surfaceDots.classList.add("visible");
+        setStatus("✅ Oberfläche erkannt!", true);
+        document.getElementById("mode-badge").style.background =
+          "rgba(0,255,100,0.2)";
+        document.getElementById("mode-badge").style.color = "#0f0";
+        document.getElementById("mode-badge").style.borderColor =
+          "rgba(0,255,100,0.5)";
+        document.getElementById("mode-badge").textContent = "BEREIT";
+        placeBtn.classList.add("visible");
+      }
+
+      // ---- Place 3D object ----
+      function placeObject() {
+        if (!surfaceFound) return;
+
+        const shape = SHAPES[count % SHAPES.length];
+        const color = COLORS[count % COLORS.length];
+        count++;
+
+        // Randomize position in front of camera
+        const x = (Math.random() - 0.5) * 3;
+        const z = -2 - Math.random() * 2;
+        const y = 0;
+
+        const el = document.createElement("a-" + shape);
+        el.setAttribute("position", `${x} ${y} ${z}`);
+        el.setAttribute(
+          "material",
+          `color:${color}; metalness:0.4; roughness:0.3; shader:standard`
+        );
+        el.setAttribute("shadow", "cast:true; receive:true");
+
+        if (shape === "box") el.setAttribute("scale", "0.3 0.3 0.3");
+        else if (shape === "sphere") el.setAttribute("radius", "0.2");
+        else if (shape === "cylinder") {
+          el.setAttribute("radius", "0.15");
+          el.setAttribute("height", "0.35");
+        } else if (shape === "cone") {
+          el.setAttribute("radius-bottom", "0.18");
+          el.setAttribute("height", "0.35");
+        } else if (shape === "torus") {
+          el.setAttribute("radius", "0.18");
+          el.setAttribute("radius-tubular", "0.05");
+        }
+
+        // Appear animation (scale in)
+        el.setAttribute("scale", "0.001 0.001 0.001");
+        el.setAttribute(
+          "animation__appear",
+          `property:scale; to:${
+            shape === "box" ? "0.3 0.3 0.3" : "1 1 1"
+          }; dur:400; easing:easeOutBack`
+        );
+
+        // Float
+        el.setAttribute(
+          "animation__float",
+          `property:position; to:${x} ${
+            y + 0.15
+          } ${z}; dir:alternate; dur:2000; loop:true; easing:easeInOutSine`
+        );
+
+        // Rotate
+        el.setAttribute(
+          "animation__rot",
+          "property:rotation; to:0 360 0; dur:4000; loop:true; easing:linear"
+        );
+
+        root.appendChild(el);
+
+        // Flash effect
+        flashEl.style.opacity = "1";
+        setTimeout(() => {
+          flashEl.style.opacity = "0";
+        }, 100);
+
+        setStatus(`✨ ${shape} platziert`, true);
+        counterEl.style.display = "block";
+        counterEl.textContent = `${count} Objekt${count > 1 ? "e" : ""}`;
+        clearBtn.style.display = "block";
+      }
+
+      function clearAll() {
+        while (root.firstChild) root.removeChild(root.firstChild);
+        count = 0;
+        counterEl.style.display = "none";
+        clearBtn.style.display = "none";
+        setStatus("🗑️ Geleert — neu scannen…");
+        surfaceFound = false;
+        surfaceDots.classList.remove("visible");
+        placeBtn.classList.remove("visible");
+        document.getElementById("mode-badge").textContent = "DEMO";
+        setTimeout(startScanSimulation, 800);
+      }
+
+      // ---- Init ----
+      window.addEventListener("load", () => {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          startCamera();
+        } else {
+          document.getElementById("cam-btn").style.display = "block";
+          setStatus("Tippe um Kamera zu starten");
+          startScanSimulation();
+        }
+      });
+    </script>
   </body>
 </html>
