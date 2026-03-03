@@ -1,144 +1,121 @@
 <!DOCTYPE html>
-<html lang="de">
+<html>
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
   <title>AR Surface</title>
+  <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{overflow:hidden;background:#000;font-family:-apple-system,sans-serif;touch-action:none}
-    #cam-video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
-    #three-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
-    #ui{position:fixed;inset:0;z-index:10;pointer-events:none}
-    #title{position:absolute;top:16px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.85);text-shadow:0 1px 6px rgba(0,0,0,0.9)}
-    #status{position:absolute;bottom:150px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;padding:10px 20px;border-radius:25px;font-size:14px;backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.12);white-space:nowrap;max-width:88vw;text-align:center;transition:border-color 0.3s,color 0.3s}
-    #status.ready{border-color:rgba(0,255,120,0.5);color:#7fffb0}
-    #place-btn{position:absolute;bottom:65px;left:50%;transform:translateX(-50%);pointer-events:all;background:linear-gradient(135deg,#00c9ff,#92fe9d);color:#000;font-weight:800;font-size:16px;border:none;padding:17px 42px;border-radius:50px;cursor:pointer;box-shadow:0 0 28px rgba(0,200,255,0.45);opacity:0;transition:opacity 0.4s}
-    #place-btn.visible{opacity:1}
-    #place-btn:active{transform:translateX(-50%) scale(0.95)}
-    #clear-btn{position:absolute;top:16px;right:16px;pointer-events:all;background:rgba(0,0,0,0.4);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.2);padding:7px 15px;border-radius:20px;font-size:13px;cursor:pointer;display:none;backdrop-filter:blur(8px)}
-    #counter{position:absolute;top:16px;left:16px;background:rgba(0,0,0,0.4);color:#7fffb0;border:1px solid rgba(0,255,120,0.25);padding:6px 14px;border-radius:20px;font-size:13px;display:none;backdrop-filter:blur(8px)}
+    #overlay {
+      position: fixed; inset: 0; z-index: 10;
+      pointer-events: none;
+      font-family: -apple-system, sans-serif;
+    }
+    #msg {
+      position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.6); color: #fff;
+      padding: 10px 20px; border-radius: 25px; font-size: 15px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.15);
+      text-align: center; white-space: nowrap;
+    }
+    #scan-btn, #place-btn {
+      position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%);
+      pointer-events: all;
+      background: linear-gradient(135deg, #00c9ff, #92fe9d);
+      color: #000; font-weight: 800; font-size: 16px; border: none;
+      padding: 16px 40px; border-radius: 50px; cursor: pointer;
+      box-shadow: 0 0 25px rgba(0,200,255,0.4);
+    }
+    #place-btn { display: none; }
   </style>
 </head>
 <body>
-<video id="cam-video" autoplay playsinline muted></video>
-<canvas id="three-canvas"></canvas>
-<div id="ui">
-  <div id="title">🔍 AR Surface</div>
-  <div id="status">📷 Kamera wird gestartet…</div>
-  <div id="counter"></div>
-  <button id="clear-btn" onclick="clearAll()">✕ Löschen</button>
+
+<div id="overlay">
+  <div id="msg">Tippe „Scan starten"</div>
+  <button id="scan-btn" onclick="startScan()">🔍 Scan starten</button>
   <button id="place-btn" onclick="placeObject()">✦ Objekt platzieren</button>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<a-scene
+  webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #overlay;"
+  ar-hit-test="enabled: false; target: #reticle;"
+  vr-mode-ui="enabled: false"
+  renderer="colorManagement: true;">
+
+  <!-- Reticle: sichtbar beim Scannen, zeigt erkannte Fläche -->
+  <a-ring id="reticle"
+    radius-inner="0.04" radius-outer="0.06"
+    rotation="-90 0 0"
+    material="color: #00ffcc; side: double"
+    visible="false">
+    <!-- Scan-Gitter als Child -->
+    <a-plane
+      width="0.3" height="0.3"
+      rotation="0 0 0"
+      material="color: #00ff88; wireframe: true; transparent: true; opacity: 0.5; side: double">
+    </a-plane>
+  </a-ring>
+
+  <!-- Das 3D Objekt — wird bei Tap hierher teleportiert -->
+  <a-box id="mybox"
+    scale="0.15 0.15 0.15"
+    material="color: #4ECDC4; metalness: 0.3; roughness: 0.4"
+    visible="false"
+    animation="property: rotation; to: 0 360 0; dur: 3000; loop: true; easing: linear"
+    animation__float="property: position; dir: alternate; dur: 1800; loop: true; easing: easeInOutSine">
+  </a-box>
+
+  <a-light type="ambient" intensity="0.7"></a-light>
+  <a-light type="directional" position="1 3 2" intensity="0.8"></a-light>
+</a-scene>
+
 <script>
-const canvas=document.getElementById('three-canvas');
-const renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-renderer.setSize(window.innerWidth,window.innerHeight);
-renderer.setClearColor(0x000000,0);
-const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.01,50);
-camera.position.set(0,0,0);
-window.addEventListener('resize',()=>{
-  renderer.setSize(window.innerWidth,window.innerHeight);
-  camera.aspect=window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-});
-scene.add(new THREE.AmbientLight(0xffffff,0.75));
-const dl=new THREE.DirectionalLight(0xffffff,1.0);dl.position.set(2,5,3);scene.add(dl);
-const fl=new THREE.PointLight(0x00aaff,0.5,10);fl.position.set(-2,2,-1);scene.add(fl);
+  const scene = document.querySelector('a-scene');
+  const msg = document.getElementById('msg');
+  const scanBtn = document.getElementById('scan-btn');
+  const placeBtn = document.getElementById('place-btn');
+  const box = document.getElementById('mybox');
 
-async function startCamera(){
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
-    const video=document.getElementById('cam-video');
-    video.srcObject=stream;await video.play();
-    setStatus('Tippe zum Platzieren');
-    document.getElementById('place-btn').classList.add('visible');
-  }catch(e){
-    document.getElementById('cam-video').style.background='linear-gradient(160deg,#0a1a0f,#0d1a1a)';
-    setStatus('Demo: Tippe zum Platzieren');
-    document.getElementById('place-btn').classList.add('visible');
-  }
-}
-
-const scans=[];
-function spawnScan(x,y,z){
-  const g=new THREE.Group();g.position.set(x,y,z);
-  const gm=new THREE.MeshBasicMaterial({color:0x00ff88,wireframe:true,transparent:true,opacity:0.5,side:THREE.DoubleSide});
-  const grid=new THREE.Mesh(new THREE.PlaneGeometry(0.8,0.8,7,7),gm);grid.rotation.x=-Math.PI/2;g.add(grid);
-  const fm=new THREE.MeshBasicMaterial({color:0x00ff88,transparent:true,opacity:0.10,side:THREE.DoubleSide});
-  const fill=new THREE.Mesh(new THREE.PlaneGeometry(0.78,0.78),fm);fill.rotation.x=-Math.PI/2;g.add(fill);
-  const rm=new THREE.MeshBasicMaterial({color:0x00ffcc,transparent:true,opacity:0.95,side:THREE.DoubleSide});
-  const ring=new THREE.Mesh(new THREE.RingGeometry(0.36,0.40,64),rm);ring.rotation.x=-Math.PI/2;g.add(ring);
-  const r2m=new THREE.MeshBasicMaterial({color:0x00ffcc,transparent:true,opacity:0.9,side:THREE.DoubleSide});
-  const ring2=new THREE.Mesh(new THREE.RingGeometry(0.10,0.13,64),r2m);ring2.rotation.x=-Math.PI/2;g.add(ring2);
-  [[-0.35,0,-0.35],[-0.35,0,0.35],[0.35,0,-0.35],[0.35,0,0.35]].forEach(([cx,cy,cz])=>{
-    const d=new THREE.Mesh(new THREE.SphereGeometry(0.025,8,8),new THREE.MeshBasicMaterial({color:0x00ffcc}));
-    d.position.set(cx,cy+0.01,cz);g.add(d);
+  // Events von ar-hit-test
+  scene.addEventListener('ar-hit-test-start', () => {
+    msg.textContent = '🔍 Oberfläche wird gesucht…';
   });
-  g.scale.set(0.01,0.01,0.01);scene.add(g);
-  scans.push({group:g,gm,fm,rm,r2m,ring,ring2,born:performance.now(),duration:1800});
-}
 
-const objs=[];
-const COLORS=[0xFF6B6B,0x4ECDC4,0x45B7D1,0xF7DC6F,0xBB8FCE,0x52BE80,0xF0B27A];
-const NAMES=['Würfel','Kugel','Zylinder','Kegel','Torus'];
-let count=0;
-
-function placeObject(){
-  const col=count%5,row=Math.floor(count/5);
-  const x=(col-2)*0.55,y=-0.5,z=-2.0-row*0.4;
-  spawnScan(x,y+0.02,z);
-  setTimeout(()=>spawnObj(x,y,z),450);
-}
-
-function spawnObj(x,y,z){
-  const si=count%5,color=COLORS[count%COLORS.length];count++;
-  const geos=[new THREE.BoxGeometry(0.26,0.26,0.26),new THREE.SphereGeometry(0.17,28,28),new THREE.CylinderGeometry(0.12,0.12,0.30,28),new THREE.ConeGeometry(0.16,0.30,28),new THREE.TorusGeometry(0.15,0.05,16,48)];
-  const mesh=new THREE.Mesh(geos[si],new THREE.MeshStandardMaterial({color,metalness:0.3,roughness:0.4}));
-  mesh.position.set(x,y,z);mesh.scale.set(0.001,0.001,0.001);scene.add(mesh);
-  objs.push({mesh,baseY:y,born:performance.now()});
-  setStatus(NAMES[si]+' platziert ('+count+')',true);
-  document.getElementById('clear-btn').style.display='block';
-  document.getElementById('counter').style.display='block';
-  document.getElementById('counter').textContent=count+' Objekt'+(count!==1?'e':'');
-}
-
-function clearAll(){
-  objs.forEach(o=>scene.remove(o.mesh));objs.length=0;count=0;
-  document.getElementById('clear-btn').style.display='none';
-  document.getElementById('counter').style.display='none';
-  setStatus('Gelöscht — tippe zum Platzieren');
-}
-
-function setStatus(msg,ready=false){
-  const el=document.getElementById('status');el.textContent=msg;el.className=ready?'ready':'';
-}
-
-function animate(){
-  requestAnimationFrame(animate);
-  const now=performance.now();
-  for(let i=scans.length-1;i>=0;i--){
-    const s=scans[i];const t=(now-s.born)/s.duration;
-    if(t>=1){scene.remove(s.group);scans.splice(i,1);continue;}
-    const sc=t<0.25?t/0.25:1;s.group.scale.set(sc,sc,sc);
-    const alpha=t>0.6?1-(t-0.6)/0.4:1;
-    s.gm.opacity=0.50*alpha;s.fm.opacity=0.10*alpha;s.rm.opacity=0.95*alpha;s.r2m.opacity=0.90*alpha;
-    s.ring.rotation.z+=0.035;s.ring2.rotation.z-=0.022;
-  }
-  objs.forEach(o=>{
-    const age=(now-o.born)/1000;
-    const sc=age<0.45?Math.min(1,(age/0.45)*1.15):1;
-    o.mesh.scale.set(sc,sc,sc);
-    o.mesh.position.y=o.baseY+Math.sin(age*1.5)*0.07;
-    o.mesh.rotation.y+=0.013;
+  scene.addEventListener('ar-hit-test-achieved', () => {
+    msg.textContent = '✅ Fläche erkannt — tippe zum Platzieren';
+    placeBtn.style.display = 'block';
+    scanBtn.style.display = 'none';
   });
-  renderer.render(scene,camera);
-}
-animate();
-startCamera();
+
+  scene.addEventListener('ar-hit-test-select', (e) => {
+    // Objekt wird automatisch platziert durch target:#mybox
+    const pos = box.getAttribute('position');
+    // Float-Animation vom aktuellen Y aus
+    box.setAttribute('animation__float',
+      `property: position; from: ${pos.x} ${pos.y} ${pos.z}; to: ${pos.x} ${pos.y + 0.12} ${pos.z}; dir: alternate; dur: 1800; loop: true; easing: easeInOutSine`
+    );
+    msg.textContent = '✨ Platziert! Tippe erneut zum Verschieben';
+  });
+
+  function startScan() {
+    // AR Session starten (Enter AR)
+    scene.enterAR().then(() => {
+      // Hit-test aktivieren
+      scene.setAttribute('ar-hit-test', 'enabled: true; target: #mybox;');
+      scanBtn.style.display = 'none';
+      msg.textContent = '📷 Kamera wird gestartet…';
+    }).catch(err => {
+      msg.textContent = '⚠️ WebXR AR nicht verfügbar (Chrome Android nötig)';
+    });
+  }
+
+  function placeObject() {
+    // Manuell select-Event triggern
+    scene.components['ar-hit-test'].el.emit('select');
+  }
 </script>
+
 </body>
 </html>
