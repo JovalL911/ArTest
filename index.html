@@ -4,116 +4,87 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
   <title>AR Surface</title>
-  <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+  <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
   <style>
     #overlay {
-      position: fixed; inset: 0; z-index: 10;
+      position: fixed; inset: 0; z-index: 999;
       pointer-events: none;
       font-family: -apple-system, sans-serif;
     }
     #msg {
-      position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.6); color: #fff;
-      padding: 10px 20px; border-radius: 25px; font-size: 15px;
+      position: absolute; bottom: 140px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.65); color: #fff;
+      padding: 11px 22px; border-radius: 25px; font-size: 15px;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255,255,255,0.15);
-      text-align: center; white-space: nowrap;
+      text-align: center; white-space: nowrap; max-width: 88vw;
     }
-    #scan-btn, #place-btn {
-      position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%);
+    #enter-btn {
+      position: absolute; bottom: 60px; left: 50%;
+      transform: translateX(-50%);
       pointer-events: all;
       background: linear-gradient(135deg, #00c9ff, #92fe9d);
       color: #000; font-weight: 800; font-size: 16px; border: none;
       padding: 16px 40px; border-radius: 50px; cursor: pointer;
       box-shadow: 0 0 25px rgba(0,200,255,0.4);
     }
-    #place-btn { display: none; }
   </style>
 </head>
 <body>
 
 <div id="overlay">
-  <div id="msg">Tippe „Scan starten"</div>
-  <button id="scan-btn" onclick="startScan()">🔍 Scan starten</button>
-  <button id="place-btn" onclick="placeObject()">✦ Objekt platzieren</button>
+  <div id="msg">Tippe zum Starten</div>
+  <button id="enter-btn" onclick="enterAR()">&#x1F50D; AR starten</button>
 </div>
 
 <a-scene
   webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #overlay;"
-  ar-hit-test="enabled: false; target: #reticle;"
+  ar-hit-test="target: #box;"
   vr-mode-ui="enabled: false"
   renderer="colorManagement: true;">
 
-  <!-- Reticle: sichtbar beim Scannen, zeigt erkannte Fläche -->
-  <a-ring id="reticle"
-    radius-inner="0.04" radius-outer="0.06"
-    rotation="-90 0 0"
-    material="color: #00ffcc; side: double"
-    visible="false">
-    <!-- Scan-Gitter als Child -->
-    <a-plane
-      width="0.3" height="0.3"
-      rotation="0 0 0"
-      material="color: #00ff88; wireframe: true; transparent: true; opacity: 0.5; side: double">
-    </a-plane>
-  </a-ring>
-
-  <!-- Das 3D Objekt — wird bei Tap hierher teleportiert -->
-  <a-box id="mybox"
-    scale="0.15 0.15 0.15"
+  <a-box id="box"
+    scale="0.2 0.2 0.2"
     material="color: #4ECDC4; metalness: 0.3; roughness: 0.4"
     visible="false"
-    animation="property: rotation; to: 0 360 0; dur: 3000; loop: true; easing: linear"
-    animation__float="property: position; dir: alternate; dur: 1800; loop: true; easing: easeInOutSine">
+    animation="property: rotation; to: 0 360 0; dur: 3000; loop: true; easing: linear">
   </a-box>
 
-  <a-light type="ambient" intensity="0.7"></a-light>
-  <a-light type="directional" position="1 3 2" intensity="0.8"></a-light>
+  <a-light type="ambient" intensity="0.8"></a-light>
+  <a-light type="directional" position="1 3 2" intensity="1.0"></a-light>
 </a-scene>
 
 <script>
   const scene = document.querySelector('a-scene');
   const msg = document.getElementById('msg');
-  const scanBtn = document.getElementById('scan-btn');
-  const placeBtn = document.getElementById('place-btn');
-  const box = document.getElementById('mybox');
+  const btn = document.getElementById('enter-btn');
 
-  // Events von ar-hit-test
-  scene.addEventListener('ar-hit-test-start', () => {
-    msg.textContent = '🔍 Oberfläche wird gesucht…';
+  scene.addEventListener('enter-vr', function() {
+    if (!scene.is('ar-mode')) return;
+    btn.style.display = 'none';
+    msg.textContent = 'Kamera schwenken um Flaeche zu finden...';
   });
 
-  scene.addEventListener('ar-hit-test-achieved', () => {
-    msg.textContent = '✅ Fläche erkannt — tippe zum Platzieren';
-    placeBtn.style.display = 'block';
-    scanBtn.style.display = 'none';
+  scene.addEventListener('exit-vr', function() {
+    btn.style.display = 'block';
+    msg.textContent = 'Tippe zum Starten';
   });
 
-  scene.addEventListener('ar-hit-test-select', (e) => {
-    // Objekt wird automatisch platziert durch target:#mybox
-    const pos = box.getAttribute('position');
-    // Float-Animation vom aktuellen Y aus
-    box.setAttribute('animation__float',
-      `property: position; from: ${pos.x} ${pos.y} ${pos.z}; to: ${pos.x} ${pos.y + 0.12} ${pos.z}; dir: alternate; dur: 1800; loop: true; easing: easeInOutSine`
-    );
-    msg.textContent = '✨ Platziert! Tippe erneut zum Verschieben';
+  scene.addEventListener('ar-hit-test-start', function() {
+    msg.textContent = 'Oberflaechensuche laeuft...';
   });
 
-  function startScan() {
-    // AR Session starten (Enter AR)
-    scene.enterAR().then(() => {
-      // Hit-test aktivieren
-      scene.setAttribute('ar-hit-test', 'enabled: true; target: #mybox;');
-      scanBtn.style.display = 'none';
-      msg.textContent = '📷 Kamera wird gestartet…';
-    }).catch(err => {
-      msg.textContent = '⚠️ WebXR AR nicht verfügbar (Chrome Android nötig)';
-    });
-  }
+  scene.addEventListener('ar-hit-test-achieved', function() {
+    msg.textContent = 'Flaeche erkannt! Auf den Bildschirm tippen zum Platzieren.';
+  });
 
-  function placeObject() {
-    // Manuell select-Event triggern
-    scene.components['ar-hit-test'].el.emit('select');
+  scene.addEventListener('ar-hit-test-select', function() {
+    msg.textContent = 'Platziert! Erneut tippen zum Verschieben.';
+  });
+
+  function enterAR() {
+    scene.enterAR();
   }
 </script>
 
